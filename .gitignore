@@ -1,0 +1,7 @@
+*.csv
+*.o
+*.hi
+dist
+cabal-dev
+*DS*
+*.swp
