@@ -6,18 +6,18 @@ module Instrument.Sampler
     , reset
     ) where
 
-
+-------------------------------------------------------------------------------
 import           Control.Concurrent.MVar
 import           Control.Exception       (mask_, onException)
 import           Control.Monad
-import           Data.Array              (Array, listArray, (!))
-import           Data.IORef              (IORef, atomicModifyIORef, newIORef, readIORef)
+import qualified Data.Vector.Mutable     as V
+-------------------------------------------------------------------------------
 
 
 -- |'BoundedChan' is an abstract data type representing a bounded channel.
 data Buffer a = B {
        _size     :: Int
-     , _contents :: Array Int (IORef a)
+     , _contents :: V.IOVector a
      , _writePos :: MVar Int
      }
 
@@ -55,21 +55,21 @@ withMVar_mask m io =
 -------------------------------------------------------------------------------
 newBuffer :: a -> Int -> IO (Buffer a)
 newBuffer a lim = do
-  entls <- replicateM lim $ newIORef a
   pos  <- newMVar 0
-  let entries = listArray (0, lim - 1) entls
+  entries <- V.new lim
   return (B lim entries pos)
 
 
--- |Write an element to the channel. If the channel is full, this routine will
--- block until it is able to write.  Blockers wait in a fair FIFO queue.
+-- | Write an element to the channel. If the channel is full, nothing
+-- will happen and the function will return immediately. We don't want
+-- to disturb production code.
 writeBuffer :: Buffer a -> a -> IO ()
 writeBuffer (B size contents wposMV) x = modifyMVar_mask_ wposMV $
   \wpos ->
     case wpos >= size of
       True -> return wpos       -- buffer full, don't do anything
       False -> do
-        atomicModifyIORef (contents ! wpos) (const (x, x))
+        V.write contents wpos x
         return (succ wpos)
 
 
@@ -77,7 +77,7 @@ writeBuffer (B size contents wposMV) x = modifyMVar_mask_ wposMV $
 getBuffer :: Buffer a -> IO [a]
 getBuffer (B size contents pos) = do
   wpos <- modifyMVar_mask pos $ \ wpos -> return (wpos, wpos)
-  forM [0.. (wpos - 1)] $ \ i -> (readIORef (contents ! i))
+  forM [0.. (wpos - 1)] $ \ i -> (V.read contents i)
 
 
 

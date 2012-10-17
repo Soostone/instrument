@@ -11,29 +11,28 @@ module Instrument.Client
     ) where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent     (ThreadId, forkIO, threadDelay)
+import           Control.Concurrent         (ThreadId, forkIO, threadDelay)
+import           Control.Exception          as E
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Data.Aeson
-import           Data.Aeson.TH
-import qualified Data.ByteString.Char8  as B
-import qualified Data.HashMap.Strict    as M
-import           Data.IORef             (IORef, atomicModifyIORef, newIORef, readIORef)
-import           Data.Pool
-import qualified Data.Text              as T
-import qualified Data.Text.Encoding     as T
-import           Database.Redis.Redis   as R
+import qualified Data.ByteString.Char8      as B
+import qualified Data.ByteString.Lazy.Char8 as LB
+import           Data.IORef                 (IORef, atomicModifyIORef, newIORef,
+                                             readIORef)
+import qualified Data.Map                   as M
+import           Data.Serialize
+import qualified Data.Text                  as T
+import qualified Data.Text.Encoding         as T
+import           Database.Redis             as R hiding (HostName (..), time)
 import           Network.HostName
 -------------------------------------------------------------------------------
-import qualified Instrument.Measurement as TM
-import qualified Instrument.Sampler     as S
+import qualified Instrument.Measurement     as TM
+import qualified Instrument.Sampler         as S
 import           Instrument.Types
 -------------------------------------------------------------------------------
 
 
-
-
-
+-------------------------------------------------------------------------------
 mkSP :: HostName -> T.Text -> [Double] -> IO SubmissionPacket
 mkSP hostName nm vals = do
   ts <- TM.getTime
@@ -41,19 +40,19 @@ mkSP hostName nm vals = do
 
 
 -- | Initialize an instrument
-initInstrument :: (String, String, Int)
-               -- ^ Redis host, port, db number
+initInstrument :: ConnectInfo
+               -- ^ Redis connection info
                -> IO Instrument
-initInstrument conn@(_, _, rdb) = do
+initInstrument conn = do
   p <- createInstrumentPool conn
   h        <- getHostName
   samplers <- newIORef M.empty
   tid      <- forkIO $ forever $ (submit h samplers p >> threadDelay 1000000)
-  return $ I tid h samplers p rdb
+  return $ I tid h samplers p
 
 
 -- | Flush all samplers in Instrument
-submit :: HostName -> IORef Samplers -> Pool Redis -> IO ()
+submit :: HostName -> IORef Samplers -> Connection -> IO ()
 submit hn samplers redis = do
   ss <- getSamplers samplers
   mapM_ (flushSampler hn redis) ss
@@ -61,7 +60,7 @@ submit hn samplers redis = do
 
 -- | Flush given sampler to remote service and flush in-memory queue
 flushSampler :: HostName
-             -> Pool Redis
+             -> Connection
              -> (T.Text, S.Sampler)
              -> IO ()
 flushSampler hostName r (name, sampler) = do
@@ -71,7 +70,7 @@ flushSampler hostName r (name, sampler) = do
     _ -> do
       S.reset sampler
       !sp <- mkSP hostName name vals
-      withResource r $ \ r -> fromRInt =<< lpush r rk (encode sp)
+      runRedis r $ lpush rk [encode sp]
       return ()
   where
     rk = B.concat [B.pack "_sq_", T.encodeUtf8 name]
@@ -105,7 +104,7 @@ getSamplers ss = M.toList `fmap` readIORef ss
 -- return it.
 getRef
                    :: T.Text
-                   -> IORef (M.HashMap T.Text S.Sampler)
+                   -> IORef (M.Map T.Text S.Sampler)
                    -> IO S.Sampler
 getRef name mapRef = do
     empty <- S.new 1000
@@ -116,5 +115,4 @@ getRef name mapRef = do
             Just ref -> (m, ref)
     return ref
 {-# INLINABLE getRef #-}
-
 

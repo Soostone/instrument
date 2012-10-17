@@ -1,4 +1,5 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Instrument.Worker
     ( initWorkerRedis
@@ -7,39 +8,37 @@ module Instrument.Worker
     ) where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent     (ThreadId, forkIO, threadDelay)
+import           Control.Concurrent         (ThreadId, forkIO, threadDelay)
+import           Control.Error
 import           Control.Monad
 import           Control.Monad.IO.Class
-import           Data.Aeson
-import           Data.Aeson.TH
-import qualified Data.ByteString.Char8  as B
+import qualified Data.ByteString.Char8      as B
+import qualified Data.ByteString.Lazy.Char8 as LB
 import           Data.CSV.Conduit
 import           Data.Default
-import qualified Data.HashMap.Strict    as M
-import qualified Data.Map               as Map
+import qualified Data.Map                   as M
 import           Data.Maybe
-import           Data.Pool
-import qualified Data.Text              as T
-import qualified Data.Text.Encoding     as T
-import qualified Data.Text.IO           as T
-import qualified Data.Vector.Unboxed    as V
-import           Database.Redis.Redis   as R
-import qualified Statistics.Quantile    as Q
+import           Data.Serialize
+import qualified Data.Text                  as T
+import qualified Data.Text.Encoding         as T
+import qualified Data.Text.IO               as T
+import qualified Data.Vector.Unboxed        as V
+import           Database.Redis             as R hiding (decode)
+import qualified Statistics.Quantile        as Q
 import           Statistics.Sample
 import           System.IO
 import           System.Posix
 -------------------------------------------------------------------------------
-import           Dyna.Debug
 import           Instrument.Client
-import qualified Instrument.Measurement as TM
+import qualified Instrument.Measurement     as TM
 import           Instrument.Types
 -------------------------------------------------------------------------------
 
 
 -------------------------------------------------------------------------------
 initWorkerRedis
-  :: (String, String, Int)
-  -- ^ Redis host, port, db number
+  :: ConnectInfo
+  -- ^ Redis host, port
   -> Int
   -- ^ Aggregation period in seconds
   -> IO ()
@@ -49,22 +48,26 @@ initWorkerRedis conn n = do
 
 
 -------------------------------------------------------------------------------
+-- | A CSV backend to store aggregation results in a CSV
 initWorkerCSV
-  :: (String, String, Int)
+  :: ConnectInfo
   -> FilePath
+  -- ^ Target file name
   -> Int
+  -- ^ Aggregation period / flush interval in seconds
   -> IO ()
 initWorkerCSV conn fp n = do
   !res <- fileExist fp
   !h <- openFile fp AppendMode
   hSetBuffering h LineBuffering
   unless res $ do
-    T.hPutStrLn h $ rowToStr defCSVSettings . Map.keys $ aggToCSV def
+    T.hPutStrLn h $ rowToStr defCSVSettings . M.keys $ aggToCSV def
   p <- createInstrumentPool conn
   forever $ work p n (putAggregateCSV h) >> threadDelay (n * 1000000)
 
 
 -------------------------------------------------------------------------------
+-- | Extract statistics out of the given sample for this flush period
 mkStats :: Sample -> Stats
 mkStats s = Stats { smean = mean s
                   , ssum = V.sum s
@@ -77,85 +80,108 @@ mkStats s = Stats { smean = mean s
                   , skurtosis = kurtosis s
                   , squantiles = quantiles }
   where
-    quantiles = M.fromList $ map mkQ [1..maxQ-1]
-    maxQ = 10
-    mkQ i = (i, Q.weightedAvg i maxQ s)
-
+    quantiles = M.fromList $ mkQ 100 99 : map (mkQ 100 . (* 10)) [1..9]
+    mkQ mx i = (i, Q.weightedAvg i mx s)
 
 
 -- | A function that does something with the aggregation results. Can
 -- implement multiple backends simply using this.
-type AggProcess = Redis -> Aggregated -> IO ()
+type AggProcess = Aggregated -> Redis ()
 
 
 -------------------------------------------------------------------------------
 -- | go over all pending stats buffers in redis; the right database
 -- must have been selected prior
-work :: Pool Redis -> Int -> AggProcess -> IO ()
-work r n f = do
-  dbg $ "entered work block"
-  withResource r $ \ r -> do
-    select r n
-    res <- fromRMultiBulk =<< keys r "_sq_*"
+work :: R.Connection -> Int -> AggProcess -> IO ()
+work r n f = runRedis r $ do
+    dbg $ "entered work block"
+    res <- R.keys (B.pack "_sq_*")
     case res of
-      Nothing -> undefined
-      Just xs -> mapM_ (processSampler r f) $ catMaybes xs
+      Left _ -> return ()
+      Right xs -> mapM_ (processSampler n f) xs
 
 
 -------------------------------------------------------------------------------
-processSampler :: Redis -> AggProcess -> B.ByteString -> IO ()
-processSampler r f k = do
-  packets <- popLAll r k
+processSampler
+    :: Int
+    -- ^ Flush interval - determines resolution
+    -> AggProcess
+    -- ^ What to do with aggregation results
+    -> B.ByteString
+    -- ^ Redis buffer for this metric
+    -> Redis ()
+processSampler n f k = do
+  packets <- popLAll k
   case packets of
     [] -> return ()
     _ -> do
       let nm = spName . head $ packets
           sample = V.fromList . concatMap spVals $ packets
-      t <- (fromIntegral . (* 60) . (`div` 60) . round) `liftM` TM.getTime
+      t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
       let stats = mkStats sample
           agg = Aggregated t nm stats
-      f r agg
+      f agg
       return ()
 
 
 -------------------------------------------------------------------------------
 -- | Store aggregation results in Redis
 putAggregateRedis :: AggProcess
-putAggregateRedis r agg = lpush r rk (encode agg) >> return ()
-  where rk = B.concat [B.pack "_s_", T.encodeUtf8 (aggName agg)]
+putAggregateRedis agg = lpush rk [encode agg] >> return ()
+  where rk = B.concat [B.pack "_is_", T.encodeUtf8 (aggName agg)]
 
 
 -------------------------------------------------------------------------------
 -- | Store aggregation results in a CSV file
 putAggregateCSV :: Handle -> AggProcess
-putAggregateCSV h _ agg = T.hPutStrLn h d
+putAggregateCSV h agg = liftIO $ T.hPutStrLn h d
   where d = rowToStr defCSVSettings $ aggToCSV agg
 
 
 
 -------------------------------------------------------------------------------
 -- | Pop all keys in a redis List
-popLAll r k = do
-  res <- popLMany r k 100
+popLAll :: Serialize a => B.ByteString -> Redis [a]
+popLAll k = do
+  res <- popLMany k 100
   case res of
     [] -> return res
-    _ -> (res ++ ) `liftM` popLAll r k
+    _ -> (res ++ ) `liftM` popLAll k
 
 
 -------------------------------------------------------------------------------
 -- | Pop up to N items from a queue. It will pop from left and preserve order.
-popLMany :: FromJSON a => Redis -> B.ByteString -> Int -> IO [a]
-popLMany r k n = do
-  res <- run_multi r $ replicateM_ n . pop
-  unwrap <- fromRMultiBulk res
-  case unwrap of
-    Nothing -> return []
-    Just xs -> return $ mapMaybe conv $ catMaybes xs
-  where
-    pop r = lpop r k :: IO (Reply B.ByteString)
-    conv x =  decode x
+popLMany :: Serialize a => B.ByteString -> Int -> Redis [a]
+popLMany k n = do
+    res <- replicateM n pop
+    case sequence res of
+      Left _ -> return []
+      Right xs -> return $ mapMaybe conv $ catMaybes xs
+    where
+      pop = R.lpop k
+      conv x =  hush $ decode x
 
 
-------------------------------------------------------------------------------
-dbg :: (MonadIO m) => String -> m ()
-dbg s = debug $ "Instrument.Worker: " ++ s
+-------------------------------------------------------------------------------
+-- | Unwrap just enough to know if there was an exception. Expect that
+-- there isn't one.
+expect f = do
+  res <- f
+  case res of
+    Left e -> unexpected e
+    Right xs -> return xs
+
+
+-------------------------------------------------------------------------------
+-- | Raise the unexpected exception
+unexpected r = error $ "Received an unexpected Left response from Redis. Reply: " ++ show r
+
+
+-------------------------------------------------------------------------------
+-- | Need to pull in a debugging library here.
+dbg _ = return ()
+
+
+-- ------------------------------------------------------------------------------
+-- dbg :: (MonadIO m) => String -> m ()
+-- dbg s = debug $ "Instrument.Worker: " ++ s

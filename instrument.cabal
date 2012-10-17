@@ -24,6 +24,7 @@ library
     Instrument.Sampler
     Instrument.Types
     Instrument.Worker
+    Instrument.Utils
   -- other-modules:       
   build-depends:       
       base ==4.5.*
@@ -32,11 +33,15 @@ library
     , transformers
     , mtl
     , hostname
-    , redis
+    , hedis
     , text
     , bytestring
-    , resource-pool
-    , unordered-containers
-    , aeson
     , statistics
     , vector
+    , containers
+    , cereal
+    , derive
+    , data-default
+    , csv-conduit
+    , unix
+    , errors
