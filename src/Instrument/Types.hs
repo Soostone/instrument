@@ -71,25 +71,34 @@ instance Default Aggregated where
 
 
 -------------------------------------------------------------------------------
-aggToCSV Aggregated{..} = els
+-- | Get agg results into a form ready to be outputted
+mkStatsFields :: Aggregated -> ([(T.Text, T.Text)], T.Text)
+mkStatsFields Aggregated{..}  = (els, ts)
+    where 
+      Stats{..} = aggStats
+      els = 
+        [ ("mean", formatDecimal 6 False smean)
+        , ("count", showT scount)
+        , ("max", formatDecimal 6 False smax)
+        , ("min", formatDecimal 6 False smin)
+        , ("srange", formatDecimal 6 False srange)
+        , ("stdDev", formatDecimal 6 False sstdev)
+        , ("sum", formatDecimal 6 False ssum)
+        , ("skewness", formatDecimal 6 False sskewness)
+        , ("kurtosis", formatDecimal 6 False skurtosis)
+        ] ++ qs
+      qs = map mkQ $ M.toList squantiles
+      mkQ (k,v) = (T.concat ["quantile_", showT k], formatDecimal 6 False v)
+      ts = formatInt aggTS
+
+
+-------------------------------------------------------------------------------
+aggToCSV agg@Aggregated{..} = els
   where
-    Stats{..} = aggStats
     els :: MapRow T.Text
-    els = M.fromList $
-      [ ("mean", formatDecimal 6 False smean)
-      , ("count", showT scount)
-      , ("max", formatDecimal 6 False smax)
-      , ("min", formatDecimal 6 False smin)
-      , ("srange", formatDecimal 6 False srange)
-      , ("stdDev", formatDecimal 6 False sstdev)
-      , ("metric", T.pack aggName)
-      , ("timestamp", formatInt aggTS)
-      , ("sum", formatDecimal 6 False ssum)
-      , ("skewness", formatDecimal 6 False sskewness)
-      , ("kurtosis", formatDecimal 6 False skurtosis)
-      ] ++ qs
-    qs = map mkQ $ M.toList squantiles
-    mkQ (k,v) = (T.concat ["quantile_", showT k], formatDecimal 6 False v)
+    els = M.fromList $ ("metric", T.pack aggName) : ("timestamp", ts) : ss
+    (ss, ts) = mkStatsFields agg
+    
 
 
 -------------------------------------------------------------------------------

@@ -1,9 +1,11 @@
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Instrument.Worker
     ( initWorkerRedis
     , initWorkerCSV
+    , initWorkerGraphite
     , work
     ) where
 
@@ -24,6 +26,7 @@ import qualified Data.Text.Encoding         as T
 import qualified Data.Text.IO               as T
 import qualified Data.Vector.Unboxed        as V
 import           Database.Redis             as R hiding (decode)
+import           Network
 import qualified Statistics.Quantile        as Q
 import           Statistics.Sample
 import           System.IO
@@ -44,9 +47,7 @@ initWorkerRedis
   -> Int
   -- ^ Aggregation period in seconds
   -> IO ()
-initWorkerRedis conn n = do
-  p <- createInstrumentPool conn
-  forever $ work p n putAggregateRedis >> threadDelay (n * 1000000)
+initWorkerRedis conn n = initWorker conn n putAggregateRedis
 
 
 -------------------------------------------------------------------------------
@@ -64,8 +65,33 @@ initWorkerCSV conn fp n = do
   hSetBuffering h LineBuffering
   unless res $ do
     T.hPutStrLn h $ rowToStr defCSVSettings . M.keys $ aggToCSV def
+  initWorker conn n $ putAggregateCSV h
+
+
+-------------------------------------------------------------------------------
+-- | Initialize a Graphite backend
+initWorkerGraphite
+    :: ConnectInfo
+    -- ^ Redis connection
+    -> Int
+    -- ^ Aggregation period / flush interval in seconds
+    -> HostName
+    -- ^ Graphite host
+    -> Int
+    -- ^ Graphite port
+    -> IO b
+initWorkerGraphite conn n server port = do
+    h <- connectTo server (PortNumber $ fromIntegral port)
+    hSetBuffering h LineBuffering
+    initWorker conn n $ putAggregateGraphite h
+
+
+-------------------------------------------------------------------------------
+-- | Generic utility for making worker backends
+initWorker conn n f = do
   p <- createInstrumentPool conn
-  forever $ work p n (putAggregateCSV h) >> threadDelay (n * 1000000)
+  forever $ work p n f >> threadDelay (n * 1000000)
+
 
 
 -------------------------------------------------------------------------------
@@ -137,6 +163,21 @@ putAggregateRedis agg = lpush rk [encode agg] >> return ()
 putAggregateCSV :: Handle -> AggProcess
 putAggregateCSV h agg = liftIO $ T.hPutStrLn h d
   where d = rowToStr defCSVSettings $ aggToCSV agg
+
+
+-------------------------------------------------------------------------------
+-- | Push data into a Graphite database using the plaintext protocol
+putAggregateGraphite :: Handle -> AggProcess
+putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
+    where
+      (ss, ts) = mkStatsFields agg
+      mkLine (m, val) = T.concat
+          [ "instrument."
+          ,  T.pack (aggName agg), "."
+          , m, " "
+          , val, " "
+          , ts ]
+
 
 
 
