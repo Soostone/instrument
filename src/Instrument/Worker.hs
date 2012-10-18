@@ -36,6 +36,8 @@ import           Instrument.Types
 
 
 -------------------------------------------------------------------------------
+-- | A redis backend that dumps results into Redis - not tested or
+-- actively used.
 initWorkerRedis
   :: ConnectInfo
   -- ^ Redis host, port
@@ -128,7 +130,7 @@ processSampler n f k = do
 -- | Store aggregation results in Redis
 putAggregateRedis :: AggProcess
 putAggregateRedis agg = lpush rk [encode agg] >> return ()
-  where rk = B.concat [B.pack "_is_", T.encodeUtf8 (aggName agg)]
+  where rk = B.concat [B.pack "_is_", B.pack (aggName agg)]
 
 
 -------------------------------------------------------------------------------

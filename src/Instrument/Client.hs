@@ -33,7 +33,7 @@ import           Instrument.Types
 
 
 -------------------------------------------------------------------------------
-mkSP :: HostName -> T.Text -> [Double] -> IO SubmissionPacket
+mkSP :: HostName -> String -> [Double] -> IO SubmissionPacket
 mkSP hostName nm vals = do
   ts <- TM.getTime
   return $ SP ts hostName nm vals
@@ -61,7 +61,7 @@ submit hn samplers redis = do
 -- | Flush given sampler to remote service and flush in-memory queue
 flushSampler :: HostName
              -> Connection
-             -> (T.Text, S.Sampler)
+             -> (String, S.Sampler)
              -> IO ()
 flushSampler hostName r (name, sampler) = do
   vals <- S.get sampler
@@ -73,11 +73,11 @@ flushSampler hostName r (name, sampler) = do
       runRedis r $ lpush rk [encode sp]
       return ()
   where
-    rk = B.concat [B.pack "_sq_", T.encodeUtf8 name]
+    rk = B.concat [B.pack "_sq_", B.pack name]
 
 
 -- | Run a monadic action while measuring its runtime
-time :: (MonadIO m) => T.Text -> Instrument -> m a -> m a
+time :: (MonadIO m) => String -> Instrument -> m a -> m a
 time name i act = do
   (!secs, !res) <- TM.time act
   liftIO $ sample name secs i
@@ -85,17 +85,17 @@ time name i act = do
 
 
 -- | Record given measurement
-sample :: MonadIO m => T.Text -> Double -> Instrument -> m ()
+sample :: MonadIO m => String -> Double -> Instrument -> m ()
 sample name v i = liftIO $ S.sample v =<< getSampler name i
 
 
 -- | Get or create a sampler under given name
-getSampler        :: T.Text -> Instrument -> IO S.Sampler
+getSampler        :: String -> Instrument -> IO S.Sampler
 getSampler name i = getRef name (samplers i)
 
 
 -- | Get a list of current samplers present
-getSamplers :: IORef Samplers -> IO [(T.Text, S.Sampler)]
+getSamplers :: IORef Samplers -> IO [(String, S.Sampler)]
 getSamplers ss = M.toList `fmap` readIORef ss
 
 
@@ -103,8 +103,8 @@ getSamplers ss = M.toList `fmap` readIORef ss
 -- under the given name, create a new one, insert it into the map and
 -- return it.
 getRef
-                   :: T.Text
-                   -> IORef (M.Map T.Text S.Sampler)
+                   :: String
+                   -> IORef (M.Map String S.Sampler)
                    -> IO S.Sampler
 getRef name mapRef = do
     empty <- S.new 1000

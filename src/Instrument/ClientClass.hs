@@ -29,7 +29,7 @@ instance (MonadReader I.Instrument m) => HasInstrument m where
 
 -- | Run a monadic action while measuring its runtime
 time :: (MonadIO m, HasInstrument m)
-     => T.Text
+     => String
      -> m a
      -> m a
 time name act = do
@@ -39,7 +39,7 @@ time name act = do
 
 -- | Record a measurement sample
 sample :: (MonadIO m, HasInstrument m )
-       => T.Text
+       => String
        -> Double
        -> m ()
 sample name val = I.sample name val =<< getInstrument

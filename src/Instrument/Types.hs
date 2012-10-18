@@ -9,11 +9,11 @@ import           Control.Concurrent  (ThreadId)
 import           Data.CSV.Conduit
 import           Data.Default
 import           Data.DeriveTH
+import qualified Data.Text           as T
+import qualified Data.Text.Encoding  as T
 import           Data.IORef          (IORef, atomicModifyIORef, newIORef, readIORef)
 import qualified Data.Map as M
 import           Data.Serialize
-import qualified Data.Text           as T
-import qualified Data.Text.Encoding  as T
 import           Database.Redis      as H hiding (HostName(..), get)
 import           Network.HostName
 -------------------------------------------------------------------------------
@@ -32,7 +32,7 @@ createInstrumentPool ci = do
 
 
 -- Map of user-defined samplers.
-type Samplers = M.Map T.Text S.Sampler
+type Samplers = M.Map String S.Sampler
 
 
 data Instrument = I {
@@ -48,7 +48,7 @@ data SubmissionPacket = SP {
     -- ^ Timing of this submission
     , spHostName :: !HostName
     -- ^ Who sent it
-    , spName :: !T.Text
+    , spName :: String
     -- ^ Metric name
     , spVals :: [Double]
     -- ^ Collected values
@@ -59,7 +59,7 @@ data SubmissionPacket = SP {
 data Aggregated = Aggregated {
       aggTS :: Double
       -- ^ Timestamp for this aggregation
-    , aggName :: T.Text
+    , aggName :: String
     -- ^ Name of the metric
     , aggStats :: Stats
     -- ^ Calculated stats for the metric
@@ -82,7 +82,7 @@ aggToCSV Aggregated{..} = els
       , ("min", formatDecimal 6 False smin)
       , ("srange", formatDecimal 6 False srange)
       , ("stdDev", formatDecimal 6 False sstdev)
-      , ("metric", aggName)
+      , ("metric", T.pack aggName)
       , ("timestamp", formatInt aggTS)
       , ("sum", formatDecimal 6 False ssum)
       , ("skewness", formatDecimal 6 False sskewness)
@@ -112,12 +112,6 @@ instance Default Stats where
     def = Stats 0 0 0 0 0 0 0 0 0 (M.fromList $ mkQ 99 : map (mkQ . (* 10)) [1..9])
       where
         mkQ i = (i, 0)
-
-
--------------------------------------------------------------------------------
-instance Serialize T.Text where
-    put = put . T.encodeUtf8
-    get = T.decodeUtf8 `fmap` get
 
 
 
