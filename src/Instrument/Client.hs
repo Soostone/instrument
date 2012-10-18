@@ -32,14 +32,12 @@ import           Instrument.Types
 -------------------------------------------------------------------------------
 
 
--------------------------------------------------------------------------------
-mkSP :: HostName -> String -> [Double] -> IO SubmissionPacket
-mkSP hostName nm vals = do
-  ts <- TM.getTime
-  return $ SP ts hostName nm vals
 
-
--- | Initialize an instrument
+-- | Initialize an instrument for measurement and feeding data into the system.
+--
+-- The resulting opaque 'Instrument' is meant to be threaded around in
+-- your application to be later used in conjunction with 'sample' and
+-- 'time'.
 initInstrument :: ConnectInfo
                -- ^ Redis connection info
                -> IO Instrument
@@ -49,6 +47,14 @@ initInstrument conn = do
   samplers <- newIORef M.empty
   tid      <- forkIO $ forever $ (submit h samplers p >> threadDelay 1000000)
   return $ I tid h samplers p
+
+
+
+-------------------------------------------------------------------------------
+mkSP :: HostName -> String -> [Double] -> IO SubmissionPacket
+mkSP hostName nm vals = do
+  ts <- TM.getTime
+  return $ SP ts hostName nm vals
 
 
 -- | Flush all samplers in Instrument
@@ -76,7 +82,8 @@ flushSampler hostName r (name, sampler) = do
     rk = B.concat [B.pack "_sq_", B.pack name]
 
 
--- | Run a monadic action while measuring its runtime
+-- | Run a monadic action while measuring its runtime. Push the
+-- measurement into the instrument system.
 time :: (MonadIO m) => String -> Instrument -> m a -> m a
 time name i act = do
   (!secs, !res) <- TM.time act
@@ -84,7 +91,10 @@ time name i act = do
   return res
 
 
--- | Record given measurement
+-- | Record given measurement under the given label.
+--
+-- Instrument will automatically capture useful stats like min, max,
+-- count, avg, stdev and percentiles within a single flush interval.
 sample :: MonadIO m => String -> Double -> Instrument -> m ()
 sample name v i = liftIO $ S.sample v =<< getSampler name i
 

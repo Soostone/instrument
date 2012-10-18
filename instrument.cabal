@@ -18,6 +18,7 @@ cabal-version:       >=1.8
 library
   hs-source-dirs: src
   exposed-modules:     
+    Instrument
     Instrument.Client
     Instrument.ClientClass
     Instrument.Measurement

@@ -92,8 +92,7 @@ type AggProcess = Aggregated -> Redis ()
 
 
 -------------------------------------------------------------------------------
--- | go over all pending stats buffers in redis; the right database
--- must have been selected prior
+-- | Go over all pending stats buffers in redis.
 work :: R.Connection -> Int -> AggProcess -> IO ()
 work r n f = runRedis r $ do
     dbg $ "entered work block"
