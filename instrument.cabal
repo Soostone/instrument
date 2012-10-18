@@ -46,3 +46,4 @@ library
     , csv-conduit
     , unix
     , errors
+    , network
