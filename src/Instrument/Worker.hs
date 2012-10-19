@@ -139,10 +139,10 @@ processSampler n f k = do
     _ -> do
       let nm = spName . head $ packets
           pl = case (spPayload $ head packets) of
-                 Samples _ -> AggStats . mkStats . V.fromList . 
-                              concatMap (unSamples . spPayload) $ 
+                 Samples _ -> AggStats . mkStats . V.fromList .
+                              concatMap (unSamples . spPayload) $
                               packets
-                 Counter _ -> AggCount . sum . 
+                 Counter _ -> AggCount . sum .
                               map (unCounter . spPayload) $
                               packets
       t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
@@ -171,6 +171,9 @@ putAggregateCSV h agg = liftIO $ T.hPutStrLn h d
   where d = rowToStr defCSVSettings $ aggToCSV agg
 
 
+typePrefix AggStats{} = "samplers"
+typePrefix AggCount{} = "counters"
+
 -------------------------------------------------------------------------------
 -- | Push data into a Graphite database using the plaintext protocol
 putAggregateGraphite :: Handle -> AggProcess
@@ -179,6 +182,7 @@ putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
       (ss, ts) = mkStatsFields agg
       mkLine (m, val) = T.concat
           [ "instrument."
+          , typePrefix (aggPayload agg), "."
           ,  T.pack (aggName agg), "."
           , m, " "
           , val, " "

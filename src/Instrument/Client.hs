@@ -93,11 +93,10 @@ submitPacket r m sp = runRedis r (lpush rk [encode sp]) >> return ()
 -- | Flush given counter to remote service and reset in-memory counter
 -- back to 0.
 flushCounter :: HostName -> Connection -> (String, C.Counter) -> IO ()
-flushCounter hn r (m, c) = do
-    i <- C.readCounter c
-    case i of
-      0 -> return ()
-      _ -> C.resetCounter c >> mkCounterSubmission hn m i >>= submitPacket r m
+flushCounter hn r (m, c) =
+    C.resetCounter c >>=
+    mkCounterSubmission hn m >>=
+    submitPacket r m
 
 
 -------------------------------------------------------------------------------
@@ -129,8 +128,10 @@ countI m n i = liftIO $ C.add n =<< getCounter m i
 timeI :: (MonadIO m) => String -> Instrument -> m a -> m a
 timeI name i act = do
   (!secs, !res) <- TM.time act
-  liftIO $ sampleI name secs i
+  liftIO $ sampleI nm secs i
   return res
+  where
+    nm = concat ["timing.", name]
 
 
 -- | Record given measurement under the given label.
