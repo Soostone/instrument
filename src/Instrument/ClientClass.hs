@@ -6,8 +6,10 @@ module Instrument.ClientClass
     ( I.Instrument
     , I.initInstrument
     , HasInstrument (..)
-    , sample
-    , time
+    , sampleI
+    , timeI
+    , countI
+    , incrementI
     ) where
 
 
@@ -28,18 +30,29 @@ instance (MonadReader I.Instrument m) => HasInstrument m where
 
 
 -- | Run a monadic action while measuring its runtime
-time :: (MonadIO m, HasInstrument m)
+timeI :: (MonadIO m, HasInstrument m)
      => String
      -> m a
      -> m a
-time name act = do
+timeI name act = do
   i <- getInstrument
-  I.time name i act
+  I.timeI name i act
 
 
 -- | Record a measurement sample
-sample :: (MonadIO m, HasInstrument m )
+sampleI :: (MonadIO m, HasInstrument m )
        => String
        -> Double
        -> m ()
-sample name val = I.sample name val =<< getInstrument
+sampleI name val = I.sampleI name val =<< getInstrument
+
+
+-------------------------------------------------------------------------------
+incrementI :: (MonadIO m, HasInstrument m) => String -> m ()
+incrementI m = I.incrementI m =<< getInstrument
+
+
+-------------------------------------------------------------------------------
+countI :: (MonadIO m, HasInstrument m) => String -> Int -> m ()
+countI m v = I.countI m v =<< getInstrument
+

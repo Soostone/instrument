@@ -18,6 +18,7 @@ import           Database.Redis      as H hiding (HostName(..), get)
 import           Network.HostName
 -------------------------------------------------------------------------------
 import qualified Instrument.Sampler  as S
+import qualified Instrument.Counter as C
 import Instrument.Utils
 -------------------------------------------------------------------------------
 
@@ -34,15 +35,19 @@ createInstrumentPool ci = do
 -- Map of user-defined samplers.
 type Samplers = M.Map String S.Sampler
 
+-- Map of user-defined counters.
+type Counters = M.Map String C.Counter
+
 
 data Instrument = I {
-      threadId :: !ThreadId
-    , hostName :: HostName
+      hostName :: HostName
     , samplers :: !(IORef Samplers)
+    , counters :: !(IORef Counters)
     , redis :: Connection
     }
 
 
+-- | Submitted package of collected samples
 data SubmissionPacket = SP {
       spTimeStamp :: !Double
     -- ^ Timing of this submission
@@ -50,10 +55,16 @@ data SubmissionPacket = SP {
     -- ^ Who sent it
     , spName :: String
     -- ^ Metric name
-    , spVals :: [Double]
+    , spPayload :: Payload
     -- ^ Collected values
     }
 
+
+-------------------------------------------------------------------------------
+data Payload 
+    = Samples { unSamples :: [Double] }
+    | Counter { unCounter :: Int }
+    
 
 -------------------------------------------------------------------------------
 data Aggregated = Aggregated {
@@ -61,10 +72,20 @@ data Aggregated = Aggregated {
       -- ^ Timestamp for this aggregation
     , aggName :: String
     -- ^ Name of the metric
-    , aggStats :: Stats
+    , aggPayload :: AggPayload
     -- ^ Calculated stats for the metric
     } deriving (Eq,Show)
 
+
+-- | Resulting payload for metrics aggregation
+data AggPayload
+    = AggStats Stats
+    | AggCount Int
+    deriving (Eq,Show)
+
+
+instance Default AggPayload where
+    def = AggStats def
 
 instance Default Aggregated where
     def = Aggregated 0 "" def
@@ -75,19 +96,22 @@ instance Default Aggregated where
 mkStatsFields :: Aggregated -> ([(T.Text, T.Text)], T.Text)
 mkStatsFields Aggregated{..}  = (els, ts)
     where 
-      Stats{..} = aggStats
       els = 
-        [ ("mean", formatDecimal 6 False smean)
-        , ("count", showT scount)
-        , ("max", formatDecimal 6 False smax)
-        , ("min", formatDecimal 6 False smin)
-        , ("srange", formatDecimal 6 False srange)
-        , ("stdDev", formatDecimal 6 False sstdev)
-        , ("sum", formatDecimal 6 False ssum)
-        , ("skewness", formatDecimal 6 False sskewness)
-        , ("kurtosis", formatDecimal 6 False skurtosis)
-        ] ++ qs
-      qs = map mkQ $ M.toList squantiles
+        case aggPayload of
+          AggStats Stats{..} -> 
+              [ ("mean", formatDecimal 6 False smean)
+              , ("count", showT scount)
+              , ("max", formatDecimal 6 False smax)
+              , ("min", formatDecimal 6 False smin)
+              , ("srange", formatDecimal 6 False srange)
+              , ("stdDev", formatDecimal 6 False sstdev)
+              , ("sum", formatDecimal 6 False ssum)
+              , ("skewness", formatDecimal 6 False sskewness)
+              , ("kurtosis", formatDecimal 6 False skurtosis)
+              ] ++ (map mkQ $ M.toList squantiles)
+          AggCount i -> 
+              [ ("count", showT i)]
+              
       mkQ (k,v) = (T.concat ["quantile_", showT k], formatDecimal 6 False v)
       ts = formatInt aggTS
 
@@ -124,6 +148,7 @@ instance Default Stats where
 
 
 
-$(derives [makeSerialize] [''Aggregated, ''Stats, ''SubmissionPacket])
+$(derives [makeSerialize] [''Aggregated, ''Stats, ''SubmissionPacket
+                          , ''Payload, ''AggPayload])
 
 

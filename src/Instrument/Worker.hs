@@ -112,11 +112,6 @@ mkStats s = Stats { smean = mean s
     mkQ mx i = (i, Q.weightedAvg i mx s)
 
 
--- | A function that does something with the aggregation results. Can
--- implement multiple backends simply using this.
-type AggProcess = Aggregated -> Redis ()
-
-
 -------------------------------------------------------------------------------
 -- | Go over all pending stats buffers in redis.
 work :: R.Connection -> Int -> AggProcess -> IO ()
@@ -143,12 +138,23 @@ processSampler n f k = do
     [] -> return ()
     _ -> do
       let nm = spName . head $ packets
-          sample = V.fromList . concatMap spVals $ packets
+          pl = case (spPayload $ head packets) of
+                 Samples _ -> AggStats . mkStats . V.fromList . 
+                              concatMap (unSamples . spPayload) $ 
+                              packets
+                 Counter _ -> AggCount . sum . 
+                              map (unCounter . spPayload) $
+                              packets
       t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
-      let stats = mkStats sample
-          agg = Aggregated t nm stats
+      let agg = Aggregated t nm pl
       f agg
       return ()
+
+
+
+-- | A function that does something with the aggregation results. Can
+-- implement multiple backends simply using this.
+type AggProcess = Aggregated -> Redis ()
 
 
 -------------------------------------------------------------------------------
