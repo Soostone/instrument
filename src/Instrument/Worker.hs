@@ -3,8 +3,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 module Instrument.Worker
-    ( initWorkerRedis
-    , initWorkerCSV
+    ( initWorkerCSV
     , initWorkerGraphite
     , work
     ) where
@@ -35,19 +34,9 @@ import           System.Posix
 import           Instrument.Client
 import qualified Instrument.Measurement     as TM
 import           Instrument.Types
+import           Instrument.Utils
 -------------------------------------------------------------------------------
 
-
--------------------------------------------------------------------------------
--- | A redis backend that dumps results into Redis - not tested or
--- actively used.
-initWorkerRedis
-  :: ConnectInfo
-  -- ^ Redis host, port
-  -> Int
-  -- ^ Aggregation period in seconds
-  -> IO ()
-initWorkerRedis conn n = initWorker conn n putAggregateRedis
 
 
 -------------------------------------------------------------------------------
@@ -138,16 +127,21 @@ processSampler n f k = do
     [] -> return ()
     _ -> do
       let nm = spName . head $ packets
-          pl = case (spPayload $ head packets) of
-                 Samples _ -> AggStats . mkStats . V.fromList .
-                              concatMap (unSamples . spPayload) $
-                              packets
-                 Counter _ -> AggCount . sum .
-                              map (unCounter . spPayload) $
-                              packets
+          byHost = collect packets spHostName id
+          mkAgg xs =
+              case (spPayload $ head xs) of
+                Samples _ -> AggStats . mkStats . V.fromList .
+                             concatMap (unSamples . spPayload) $
+                             xs
+                Counter _ -> AggCount . sum .
+                             map (unCounter . spPayload) $
+                             xs
       t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
-      let agg = Aggregated t nm pl
+      let agg = Aggregated t nm "all" $ mkAgg packets
+          aggs = map mkHostAgg $ M.toList byHost
+          mkHostAgg (hn, ps) = Aggregated t nm (T.concat ["hosts.", noDots $ T.pack hn]) $ mkAgg ps
       f agg
+      mapM_ f aggs
       return ()
 
 
@@ -157,12 +151,6 @@ processSampler n f k = do
 type AggProcess = Aggregated -> Redis ()
 
 
--------------------------------------------------------------------------------
--- | Store aggregation results in Redis
-putAggregateRedis :: AggProcess
-putAggregateRedis agg = lpush rk [encode agg] >> return ()
-  where rk = B.concat [B.pack "_is_", B.pack (aggName agg)]
-
 
 -------------------------------------------------------------------------------
 -- | Store aggregation results in a CSV file
@@ -171,8 +159,8 @@ putAggregateCSV h agg = liftIO $ T.hPutStrLn h d
   where d = rowToStr defCSVSettings $ aggToCSV agg
 
 
-typePrefix AggStats{} = "samplers"
-typePrefix AggCount{} = "counters"
+typePrefix AggStats{} = "samples"
+typePrefix AggCount{} = "counts"
 
 -------------------------------------------------------------------------------
 -- | Push data into a Graphite database using the plaintext protocol
@@ -181,14 +169,13 @@ putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
     where
       (ss, ts) = mkStatsFields agg
       mkLine (m, val) = T.concat
-          [ "instrument."
+          [ "inst."
           , typePrefix (aggPayload agg), "."
           ,  T.pack (aggName agg), "."
-          , m, " "
+          , m, "."
+          , (aggGroup agg), " "
           , val, " "
           , ts ]
-
-
 
 
 -------------------------------------------------------------------------------

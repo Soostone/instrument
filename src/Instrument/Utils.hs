@@ -5,15 +5,35 @@ module Instrument.Utils
     ( formatDecimal
     , formatInt
     , showT
+    , collect
+    , noDots
     ) where
 
 
 -------------------------------------------------------------------------------
-import           Data.Text     (Text)
-import qualified Data.Text     as T
+import           Data.List
+import qualified Data.Map  as M
+import           Data.Text (Text)
+import qualified Data.Text as T
 import           Numeric
 -------------------------------------------------------------------------------
 
+
+
+-------------------------------------------------------------------------------
+collect :: (Ord b)
+        => [a]
+        -> (a -> b)
+        -> (a -> c)
+        -> M.Map b [c]
+collect as mkKey mkVal = foldr step M.empty as
+    where
+      step x acc = M.insertWith' (++) (mkKey x) ([mkVal x]) acc
+
+
+-------------------------------------------------------------------------------
+noDots :: Text -> Text
+noDots = T.intercalate "_" . T.splitOn "."
 
 
 -------------------------------------------------------------------------------

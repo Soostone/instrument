@@ -72,6 +72,8 @@ data Aggregated = Aggregated {
       -- ^ Timestamp for this aggregation
     , aggName :: String
     -- ^ Name of the metric
+    , aggGroup :: T.Text
+    -- ^ The aggregation level/group for this stat
     , aggPayload :: AggPayload
     -- ^ Calculated stats for the metric
     } deriving (Eq,Show)
@@ -88,7 +90,7 @@ instance Default AggPayload where
     def = AggStats def
 
 instance Default Aggregated where
-    def = Aggregated 0 "" def
+    def = Aggregated 0 "" "" def
 
 
 -------------------------------------------------------------------------------
@@ -148,7 +150,7 @@ instance Default Stats where
 
 
 
-$(derives [makeSerialize] [''Aggregated, ''Stats, ''SubmissionPacket
+$(derives [makeSerialize] [''Stats, ''SubmissionPacket
                           , ''Payload, ''AggPayload])
 
 

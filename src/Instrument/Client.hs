@@ -131,7 +131,7 @@ timeI name i act = do
   liftIO $ sampleI nm secs i
   return res
   where
-    nm = concat ["timing.", name]
+    nm = concat ["time.", name]
 
 
 -- | Record given measurement under the given label.
