@@ -1,3 +1,17 @@
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Instrument.Sampler
+-- Copyright   :  Soostone Inc
+-- License     :  BSD3
+--
+-- Maintainer  :  Ozgun Ataman
+-- Stability   :  experimental
+--
+-- A container that can capture actual numeric values, efficiently and
+-- concurrently buffering them in memory. We can impose a cap on how
+-- many values are captured at a time.
+----------------------------------------------------------------------------
+
 module Instrument.Sampler
     ( Sampler (..)
     , new
