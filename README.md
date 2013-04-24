@@ -45,10 +45,13 @@ Our recommended backend is currently graphite. Please see the
 examples/graphite folder for the required settings and configuration
 file contents.
 
-#### Example Output
+#### Graphite Counting Example
 
 ![instrument Graphite Counting Example](examples/graphite/counting-output.png
  "Example Counting Output")
+
+
+#### Graphite Sampling Example
 
 ![instrument Graphite Sampling Example](examples/graphite/sampling-output.png
  "Example Sampling Output")
