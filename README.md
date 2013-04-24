@@ -45,6 +45,12 @@ Our recommended backend is currently graphite. Please see the
 examples/graphite folder for the required settings and configuration
 file contents.
 
+#### Example Output
+
+![instrument Graphite Example](examples/graphite/sample-output.png
+ "Sample Graphite Output")
+
+
 ### CSV
 
 A very simple backend that any application can easily use on the
