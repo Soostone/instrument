@@ -47,8 +47,11 @@ file contents.
 
 #### Example Output
 
-![instrument Graphite Example](examples/graphite/sample-output.png
- "Sample Graphite Output")
+![instrument Graphite Counting Example](examples/graphite/counting-output.png
+ "Example Counting Output")
+
+![instrument Graphite Sampling Example](examples/graphite/sampling-output.png
+ "Example Sampling Output")
 
 
 ### CSV
