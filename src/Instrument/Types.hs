@@ -5,21 +5,22 @@
 module Instrument.Types where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent  (ThreadId)
+import           Control.Concurrent (ThreadId)
 import           Data.CSV.Conduit
 import           Data.Default
 import           Data.DeriveTH
-import qualified Data.Text           as T
-import qualified Data.Text.Encoding  as T
-import           Data.IORef          (IORef, atomicModifyIORef, newIORef, readIORef)
-import qualified Data.Map as M
+import           Data.IORef         (IORef, atomicModifyIORef, newIORef,
+                                     readIORef)
+import qualified Data.Map           as M
 import           Data.Serialize
-import           Database.Redis      as H hiding (HostName(..), get)
+import qualified Data.Text          as T
+import qualified Data.Text.Encoding as T
+import           Database.Redis     as H hiding (HostName (..), get)
 import           Network.HostName
 -------------------------------------------------------------------------------
-import qualified Instrument.Sampler  as S
 import qualified Instrument.Counter as C
-import Instrument.Utils
+import qualified Instrument.Sampler as S
+import           Instrument.Utils
 -------------------------------------------------------------------------------
 
 
@@ -43,7 +44,7 @@ data Instrument = I {
       hostName :: HostName
     , samplers :: !(IORef Samplers)
     , counters :: !(IORef Counters)
-    , redis :: Connection
+    , redis    :: Connection
     }
 
 
@@ -51,28 +52,28 @@ data Instrument = I {
 data SubmissionPacket = SP {
       spTimeStamp :: !Double
     -- ^ Timing of this submission
-    , spHostName :: !HostName
+    , spHostName  :: !HostName
     -- ^ Who sent it
-    , spName :: String
+    , spName      :: String
     -- ^ Metric name
-    , spPayload :: Payload
+    , spPayload   :: Payload
     -- ^ Collected values
     }
 
 
 -------------------------------------------------------------------------------
-data Payload 
+data Payload
     = Samples { unSamples :: [Double] }
     | Counter { unCounter :: Int }
-    
+
 
 -------------------------------------------------------------------------------
 data Aggregated = Aggregated {
-      aggTS :: Double
+      aggTS      :: Double
       -- ^ Timestamp for this aggregation
-    , aggName :: String
+    , aggName    :: String
     -- ^ Name of the metric
-    , aggGroup :: T.Text
+    , aggGroup   :: T.Text
     -- ^ The aggregation level/group for this stat
     , aggPayload :: AggPayload
     -- ^ Calculated stats for the metric
@@ -97,10 +98,10 @@ instance Default Aggregated where
 -- | Get agg results into a form ready to be outputted
 mkStatsFields :: Aggregated -> ([(T.Text, T.Text)], T.Text)
 mkStatsFields Aggregated{..}  = (els, ts)
-    where 
-      els = 
+    where
+      els =
         case aggPayload of
-          AggStats Stats{..} -> 
+          AggStats Stats{..} ->
               [ ("mean", formatDecimal 6 False smean)
               , ("count", showT scount)
               , ("max", formatDecimal 6 False smax)
@@ -111,10 +112,10 @@ mkStatsFields Aggregated{..}  = (els, ts)
               , ("skewness", formatDecimal 6 False sskewness)
               , ("kurtosis", formatDecimal 6 False skurtosis)
               ] ++ (map mkQ $ M.toList squantiles)
-          AggCount i -> 
+          AggCount i ->
               [ ("count", showT i)]
-              
-      mkQ (k,v) = (T.concat ["quantile_", showT k], formatDecimal 6 False v)
+
+      mkQ (k,v) = (T.concat ["percentile_", showT k], formatDecimal 6 False v)
       ts = formatInt aggTS
 
 
@@ -124,20 +125,20 @@ aggToCSV agg@Aggregated{..} = els
     els :: MapRow T.Text
     els = M.fromList $ ("metric", T.pack aggName) : ("timestamp", ts) : ss
     (ss, ts) = mkStatsFields agg
-    
+
 
 
 -------------------------------------------------------------------------------
 data Stats = Stats {
-      smean :: Double
-    , ssum :: Double
-    , scount :: Int
-    , smax :: Double
-    , smin :: Double
-    , srange :: Double
-    , sstdev :: Double
-    , sskewness :: Double
-    , skurtosis :: Double
+      smean      :: Double
+    , ssum       :: Double
+    , scount     :: Int
+    , smax       :: Double
+    , smin       :: Double
+    , srange     :: Double
+    , sstdev     :: Double
+    , sskewness  :: Double
+    , skurtosis  :: Double
     , squantiles :: M.Map Int Double
     } deriving (Eq, Show)
 
