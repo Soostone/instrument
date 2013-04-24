@@ -12,6 +12,14 @@ infrastructure.
 
 ## Architecture
 
+### Objectives
+
+1. Be lightweight and fast
+1. Don't consume much bandwidth
+1. Don't consume much memory
+1. Support collecting data from multiple nodes running the same code
+1. Support multiple backends
+
 ### Components
 
 * The application from which data is captured
@@ -20,6 +28,14 @@ infrastructure.
 * A stand-alone background worker that crunches the data in the redis
   queue and emits the aggregate results into one of the backends we
   support.
+  
+### Overall Workflow
+
+Each application maintains an in-memory buffer (behind a forkIO) that
+is limited to 1000 samples per key/counter. Every second this buffer
+gets pre-aggregated and results get sent to the central redis server.
+The worker application that processes these packets to produce the
+final output to be fed to the backend. 
   
 ## Backends
 
@@ -35,6 +51,8 @@ A very simple backend that any application can easily use on the
 outset is a CSV file. The results will simply be locally saved in a
 CSV file by the background worker application.
 
+
+## Quirks and Limitations
 
 ## TODO
 
