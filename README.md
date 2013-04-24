@@ -64,6 +64,38 @@ outset is a CSV file. The results will simply be locally saved in a
 CSV file by the background worker application.
 
 
+## Example Usage
+
+~~~~~~ {haskell}
+
+import Control.Concurrent
+import Database.Redis
+import Instrument.Client
+import Instrument.Worker
+
+main = do
+  forkIO worker
+  myApp
+  threadDelay 20000000 -- let's wait 20 secs before quitting
+
+-- | Aggregate stats every 10 seconds and output into a simple CSV file.
+worker = initWorkerCSV redisInfo "instrument.csv" 10
+
+
+-- | Our client application
+myApp = do
+  inst <- initInstrument redisInfo
+  timeI "someFunctionCall" inst $ myFunction
+
+
+-- The default local Redis server
+redisInfo = defaultConnectInfo
+
+-- Some function we'll be instrumenting
+myFunction = threadDelay 1200 >> print "Hello"
+
+~~~~~~
+
 ## Quirks and Limitations
 
 ## TODO
