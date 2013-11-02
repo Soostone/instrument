@@ -3,6 +3,21 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Instrument.ClientClass
+-- Copyright   :  Soostone Inc
+-- License     :  BSD3
+--
+-- Maintainer  :  Ozgun Ataman
+-- Stability   :  experimental
+--
+-- This module mimics the functionality of Instrument.Client but
+-- instead exposes a typeclass facilitated interface. Once you define
+-- the typeclass for your application's main monad, you can call all
+-- the mesaurement functions directly.
+----------------------------------------------------------------------------
+
 module Instrument.ClientClass
     ( I.Instrument
     , I.initInstrument

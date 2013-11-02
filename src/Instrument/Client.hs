@@ -107,19 +107,25 @@ flushSampler hostName r (name, sampler) = do
 
 
 -------------------------------------------------------------------------------
--- | Increment a counter by one.
+-- | Increment a counter by one. Same as calling 'countI' with 1.
+--
+-- >>> incrementI \"uploadedFiles\" instr
 incrementI :: (MonadIO m) => String -> Instrument -> m ()
 incrementI m i = liftIO $ C.increment =<< getCounter m i
 
 
 -------------------------------------------------------------------------------
 -- | Increment a counter by n.
+--
+-- >>> countI \"uploadedFiles\" 1 instr
 countI :: MonadIO m => String -> Int -> Instrument -> m ()
 countI m n i = liftIO $ C.add n =<< getCounter m i
 
 
 -- | Run a monadic action while measuring its runtime. Push the
 -- measurement into the instrument system.
+--
+-- >>> timeI \"fileUploadTime\" instr $ uploadFile file
 timeI :: (MonadIO m) => String -> Instrument -> m a -> m a
 timeI name i act = do
   (!secs, !res) <- TM.time act
@@ -133,6 +139,11 @@ timeI name i act = do
 --
 -- Instrument will automatically capture useful stats like min, max,
 -- count, avg, stdev and percentiles within a single flush interval.
+--
+-- Say we check our upload queue size very minute and record something
+-- like:
+--
+-- >>> sampleI \"uploadQueue\" 27 inst
 sampleI :: MonadIO m => String -> Double -> Instrument -> m ()
 sampleI name v i = liftIO $ S.sample v =<< getSampler name i
 

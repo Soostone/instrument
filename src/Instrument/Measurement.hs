@@ -39,5 +39,6 @@ time_ act = do
   end <- liftIO getTime
   return $! end - start
 
+-------------------------------------------------------------------------------
 getTime :: IO Double
 getTime = realToFrac `fmap` getPOSIXTime

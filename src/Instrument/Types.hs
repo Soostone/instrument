@@ -113,7 +113,7 @@ mkStatsFields Aggregated{..}  = (els, ts)
           AggCount i ->
               [ ("count", showT i)]
 
-      mkQ (k,v) = (T.concat ["quantile_", showT k], formatDecimal 6 False v)
+      mkQ (k,v) = (T.concat ["percentile_", showT k], formatDecimal 6 False v)
       ts = formatInt aggTS
 
 
