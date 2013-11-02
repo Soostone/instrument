@@ -10,11 +10,9 @@ module Instrument.Counter
     ) where
 
 -------------------------------------------------------------------------------
-import           Control.Exception (mask_, onException)
 import           Control.Monad
 import           Data.IORef
 -------------------------------------------------------------------------------
-
 
 
 newtype Counter = Counter { unCounter :: IORef Int }

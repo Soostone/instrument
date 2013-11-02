@@ -2,7 +2,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-
 module Instrument.Client
     ( Instrument
     , initInstrument
@@ -13,24 +12,20 @@ module Instrument.Client
     ) where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent         (ThreadId, forkIO, threadDelay)
-import           Control.Exception          as E
+import           Control.Concurrent     (ThreadId, forkIO, threadDelay)
 import           Control.Monad
 import           Control.Monad.IO.Class
-import qualified Data.ByteString.Char8      as B
-import qualified Data.ByteString.Lazy.Char8 as LB
-import           Data.IORef                 (IORef, atomicModifyIORef, newIORef,
-                                             readIORef)
-import qualified Data.Map                   as M
+import qualified Data.ByteString.Char8  as B
+import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
+                                         readIORef)
+import qualified Data.Map               as M
 import           Data.Serialize
-import qualified Data.Text                  as T
-import qualified Data.Text.Encoding         as T
-import           Database.Redis             as R hiding (HostName (..), time)
+import           Database.Redis         as R hiding (HostName (..), time)
 import           Network.HostName
 -------------------------------------------------------------------------------
-import qualified Instrument.Counter         as C
-import qualified Instrument.Measurement     as TM
-import qualified Instrument.Sampler         as S
+import qualified Instrument.Counter     as C
+import qualified Instrument.Measurement as TM
+import qualified Instrument.Sampler     as S
 import           Instrument.Types
 -------------------------------------------------------------------------------
 

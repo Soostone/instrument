@@ -1,6 +1,7 @@
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Instrument.ClientClass
     ( I.Instrument
@@ -12,11 +13,9 @@ module Instrument.ClientClass
     , incrementI
     ) where
 
-
 -------------------------------------------------------------------------------
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
-import qualified Data.Text              as T
 -------------------------------------------------------------------------------
 import qualified Instrument.Client      as I
 -------------------------------------------------------------------------------

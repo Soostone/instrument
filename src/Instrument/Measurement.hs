@@ -16,10 +16,11 @@ module Instrument.Measurement
     , time_
     ) where
 
-import           Control.Monad          (when)
+-------------------------------------------------------------------------------
 import           Control.Monad.IO.Class
 import           Data.Time.Clock.POSIX  (getPOSIXTime)
-import           Text.Printf            (printf)
+-------------------------------------------------------------------------------
+
 
 -- | Measure how long action took, in seconds along with its result
 time :: MonadIO m =>  m a -> m (Double, a)

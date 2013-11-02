@@ -22,13 +22,14 @@ library
     Instrument.Client
     Instrument.ClientClass
     Instrument.Measurement
+    Instrument.Counter
     Instrument.Sampler
     Instrument.Types
     Instrument.Worker
     Instrument.Utils
-  -- other-modules:       
+
   build-depends:       
-      base ==4.5.*
+      base >= 4.5 && < 5
     , array
     , time
     , transformers
