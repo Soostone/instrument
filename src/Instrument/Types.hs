@@ -26,8 +26,8 @@ import           Instrument.Utils
 createInstrumentPool :: ConnectInfo -> IO Connection
 createInstrumentPool ci = do
   c <- connect ci {
-         connectMaxIdleTime = 300
-       , connectMaxConnections = 3 }
+         connectMaxIdleTime = 15
+       , connectMaxConnections = 1 }
   return c
 
 
@@ -93,9 +93,9 @@ instance Default Aggregated where
 
 
 -------------------------------------------------------------------------------
--- | Get agg results into a form ready to be outputted
-mkStatsFields :: Aggregated -> ([(T.Text, T.Text)], T.Text)
-mkStatsFields Aggregated{..}  = (els, ts)
+-- | Get agg results into a form ready to be output
+mkStatsFields :: Aggregated -> [(T.Text, T.Text)]
+mkStatsFields Aggregated{..}  = ("timestamp", ts) : els
     where
       els =
         case aggPayload of
@@ -118,11 +118,13 @@ mkStatsFields Aggregated{..}  = (els, ts)
 
 
 -------------------------------------------------------------------------------
-aggToCSV agg@Aggregated{..} = els
+-- | Expand count aggregation to have the full columns
+aggToCSV agg@Aggregated{..} = M.union els defFields
   where
     els :: MapRow T.Text
-    els = M.fromList $ ("metric", T.pack aggName) : ("timestamp", ts) : ss
-    (ss, ts) = mkStatsFields agg
+    els = M.fromList $ ("metric", T.pack aggName) : fields
+    fields = mkStatsFields agg
+    defFields = M.fromList $ mkStatsFields $ agg { aggPayload =  (AggStats def) }
 
 
 

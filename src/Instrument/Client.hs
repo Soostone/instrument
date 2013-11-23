@@ -140,8 +140,8 @@ timeI name i act = do
 -- Instrument will automatically capture useful stats like min, max,
 -- count, avg, stdev and percentiles within a single flush interval.
 --
--- Say we check our upload queue size very minute and record something
--- like:
+-- Say we check our upload queue size every minute and record
+-- something like:
 --
 -- >>> sampleI \"uploadQueue\" 27 inst
 sampleI :: MonadIO m => String -> Double -> Instrument -> m ()
