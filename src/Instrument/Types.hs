@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
@@ -5,19 +6,21 @@
 module Instrument.Types where
 
 -------------------------------------------------------------------------------
+import qualified Data.ByteString.Char8 as B
 import           Data.CSV.Conduit
 import           Data.Default
-import           Data.DeriveTH
-import           Data.IORef         (IORef, atomicModifyIORef, newIORef,
-                                     readIORef)
-import qualified Data.Map           as M
+import           Data.IORef
+import qualified Data.Map              as M
 import           Data.Serialize
-import qualified Data.Text          as T
-import           Database.Redis     as H hiding (HostName (..), get)
+import           Data.Text             (Text)
+import qualified Data.Text             as T
+import           Data.Text.Encoding
+import           Database.Redis        as H hiding (HostName, get)
+import           GHC.Generics
 import           Network.HostName
 -------------------------------------------------------------------------------
-import qualified Instrument.Counter as C
-import qualified Instrument.Sampler as S
+import qualified Instrument.Counter    as C
+import qualified Instrument.Sampler    as S
 import           Instrument.Utils
 -------------------------------------------------------------------------------
 
@@ -56,14 +59,18 @@ data SubmissionPacket = SP {
     -- ^ Metric name
     , spPayload   :: Payload
     -- ^ Collected values
-    }
+    } deriving (Eq,Show,Generic)
+
+instance Serialize SubmissionPacket
 
 
 -------------------------------------------------------------------------------
 data Payload
     = Samples { unSamples :: [Double] }
     | Counter { unCounter :: Int }
+  deriving (Eq, Show, Generic)
 
+instance Serialize Payload
 
 -------------------------------------------------------------------------------
 data Aggregated = Aggregated {
@@ -71,18 +78,22 @@ data Aggregated = Aggregated {
       -- ^ Timestamp for this aggregation
     , aggName    :: String
     -- ^ Name of the metric
-    , aggGroup   :: T.Text
+    , aggGroup   :: B.ByteString
     -- ^ The aggregation level/group for this stat
     , aggPayload :: AggPayload
     -- ^ Calculated stats for the metric
-    } deriving (Eq,Show)
+    } deriving (Eq,Show, Generic)
+
+instance Serialize Aggregated
 
 
 -- | Resulting payload for metrics aggregation
 data AggPayload
     = AggStats Stats
     | AggCount Int
-    deriving (Eq,Show)
+    deriving (Eq,Show, Generic)
+
+instance Serialize AggPayload
 
 
 instance Default AggPayload where
@@ -94,8 +105,8 @@ instance Default Aggregated where
 
 -------------------------------------------------------------------------------
 -- | Get agg results into a form ready to be output
-mkStatsFields :: Aggregated -> [(T.Text, T.Text)]
-mkStatsFields Aggregated{..}  = ("timestamp", ts) : els
+mkStatsFields :: Aggregated -> ([(Text, Text)], Text)
+mkStatsFields Aggregated{..}  = (els, ts)
     where
       els =
         case aggPayload of
@@ -121,10 +132,14 @@ mkStatsFields Aggregated{..}  = ("timestamp", ts) : els
 -- | Expand count aggregation to have the full columns
 aggToCSV agg@Aggregated{..} = M.union els defFields
   where
-    els :: MapRow T.Text
-    els = M.fromList $ ("metric", T.pack aggName) : fields
-    fields = mkStatsFields agg
-    defFields = M.fromList $ mkStatsFields $ agg { aggPayload =  (AggStats def) }
+    els :: MapRow Text
+    els = M.fromList $
+            ("metric", T.pack aggName) :
+            ("group", decodeUtf8 aggGroup ) :
+            ("timestamp", ts) :
+            fields
+    (fields, ts) = mkStatsFields agg
+    defFields = M.fromList $ fst $ mkStatsFields $ agg { aggPayload =  (AggStats def) }
 
 
 
@@ -140,7 +155,7 @@ data Stats = Stats {
     , sskewness  :: Double
     , skurtosis  :: Double
     , squantiles :: M.Map Int Double
-    } deriving (Eq, Show)
+    } deriving (Eq, Show, Generic)
 
 
 
@@ -149,9 +164,6 @@ instance Default Stats where
       where
         mkQ i = (i, 0)
 
-
-
-$(derives [makeSerialize] [''Stats, ''SubmissionPacket
-                          , ''Payload, ''AggPayload])
+instance Serialize Stats
 
 

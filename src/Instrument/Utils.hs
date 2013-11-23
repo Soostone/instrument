@@ -5,16 +5,17 @@ module Instrument.Utils
     ( formatDecimal
     , formatInt
     , showT
+    , showBS
     , collect
     , noDots
     ) where
 
 
 -------------------------------------------------------------------------------
-import           Data.List
-import qualified Data.Map  as M
-import           Data.Text (Text)
-import qualified Data.Text as T
+import qualified Data.ByteString.Char8 as B
+import qualified Data.Map              as M
+import           Data.Text             (Text)
+import qualified Data.Text             as T
 import           Numeric
 -------------------------------------------------------------------------------
 
@@ -40,6 +41,8 @@ noDots = T.intercalate "_" . T.splitOn "."
 showT :: Show a => a -> Text
 showT = T.pack . show
 
+showBS :: Show a => a -> B.ByteString
+showBS = B.pack . show
 
 -------------------------------------------------------------------------------
 formatInt :: RealFrac a => a -> Text

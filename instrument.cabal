@@ -38,7 +38,6 @@ library
     , vector
     , containers
     , cereal
-    , derive
     , data-default
     , csv-conduit
     , unix

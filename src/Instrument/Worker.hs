@@ -9,30 +9,27 @@ module Instrument.Worker
     ) where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent         (ThreadId, forkIO, threadDelay)
+import           Control.Concurrent
 import           Control.Error
 import           Control.Monad
 import           Control.Monad.IO.Class
-import qualified Data.ByteString.Char8      as B
-import qualified Data.ByteString.Lazy.Char8 as LB
+import qualified Data.ByteString.Char8  as B
 import           Data.CSV.Conduit
 import           Data.Default
-import qualified Data.Map                   as M
-import           Data.Maybe
+import qualified Data.Map               as M
 import           Data.Serialize
-import qualified Data.Text                  as T
-import qualified Data.Text.Encoding         as T
-import qualified Data.Text.IO               as T
-import qualified Data.Vector.Unboxed        as V
-import           Database.Redis             as R hiding (decode)
+import qualified Data.Text              as T
+import qualified Data.Text.Encoding     as T
+import qualified Data.Text.IO           as T
+import qualified Data.Vector.Unboxed    as V
+import           Database.Redis         as R hiding (decode)
 import           Network
-import qualified Statistics.Quantile        as Q
+import qualified Statistics.Quantile    as Q
 import           Statistics.Sample
 import           System.IO
 import           System.Posix
 -------------------------------------------------------------------------------
-import           Instrument.Client
-import qualified Instrument.Measurement     as TM
+import qualified Instrument.Measurement as TM
 import           Instrument.Types
 import           Instrument.Utils
 -------------------------------------------------------------------------------
@@ -139,7 +136,7 @@ processSampler n f k = do
       t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
       let agg = Aggregated t nm "all" $ mkAgg packets
           aggs = map mkHostAgg $ M.toList byHost
-          mkHostAgg (hn, ps) = Aggregated t nm (T.concat ["hosts.", noDots $ T.pack hn]) $ mkAgg ps
+          mkHostAgg (hn, ps) = Aggregated t nm (T.encodeUtf8 $ T.concat ["hosts.", noDots $ T.pack hn]) $ mkAgg ps
       f agg
       mapM_ f aggs
       return ()
@@ -162,6 +159,7 @@ putAggregateCSV h agg = liftIO $ T.hPutStrLn h d
 typePrefix AggStats{} = "samples"
 typePrefix AggCount{} = "counts"
 
+
 -------------------------------------------------------------------------------
 -- | Push data into a Graphite database using the plaintext protocol
 putAggregateGraphite :: Handle -> AggProcess
@@ -173,7 +171,7 @@ putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
           , typePrefix (aggPayload agg), "."
           ,  T.pack (aggName agg), "."
           , m, "."
-          , (aggGroup agg), " "
+          , (T.decodeUtf8 $ aggGroup agg), " "
           , val, " "
           , ts ]
 
@@ -199,21 +197,6 @@ popLMany k n = do
     where
       pop = R.lpop k
       conv x =  hush $ decode x
-
-
--------------------------------------------------------------------------------
--- | Unwrap just enough to know if there was an exception. Expect that
--- there isn't one.
-expect f = do
-  res <- f
-  case res of
-    Left e -> unexpected e
-    Right xs -> return xs
-
-
--------------------------------------------------------------------------------
--- | Raise the unexpected exception
-unexpected r = error $ "Received an unexpected Left response from Redis. Reply: " ++ show r
 
 
 -------------------------------------------------------------------------------
