@@ -28,11 +28,9 @@ module Instrument.ClientClass
     , incrementI
     ) where
 
-
 -------------------------------------------------------------------------------
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
-import qualified Data.Text              as T
 -------------------------------------------------------------------------------
 import qualified Instrument.Client      as I
 -------------------------------------------------------------------------------

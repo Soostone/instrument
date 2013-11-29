@@ -19,13 +19,14 @@ library
     Instrument.ClientClass
     Instrument.Counter
     Instrument.Measurement
+    Instrument.Counter
     Instrument.Sampler
     Instrument.Types
     Instrument.Utils
     Instrument.Worker
 
   build-depends:       
-      base >= 4.5
+      base >= 4.5 && < 5
     , array
     , time
     , transformers
@@ -38,7 +39,6 @@ library
     , vector
     , containers
     , cereal
-    , derive
     , data-default
     , csv-conduit
     , unix

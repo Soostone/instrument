@@ -16,9 +16,10 @@ module Instrument.Measurement
     , time_
     ) where
 
-
+-------------------------------------------------------------------------------
 import           Control.Monad.IO.Class
 import           Data.Time.Clock.POSIX  (getPOSIXTime)
+-------------------------------------------------------------------------------
 
 
 -- | Measure how long action took, in seconds along with its result
@@ -37,7 +38,6 @@ time_ act = do
   _ <- act
   end <- liftIO getTime
   return $! end - start
-
 
 -------------------------------------------------------------------------------
 getTime :: IO Double
