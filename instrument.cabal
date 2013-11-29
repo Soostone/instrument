@@ -19,7 +19,6 @@ library
     Instrument.ClientClass
     Instrument.Counter
     Instrument.Measurement
-    Instrument.Counter
     Instrument.Sampler
     Instrument.Types
     Instrument.Utils
