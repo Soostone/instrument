@@ -17,11 +17,12 @@ library
     Instrument
     Instrument.Client
     Instrument.ClientClass
+    Instrument.Counter
     Instrument.Measurement
     Instrument.Sampler
     Instrument.Types
-    Instrument.Worker
     Instrument.Utils
+    Instrument.Worker
 
   build-depends:       
       base >= 4.5

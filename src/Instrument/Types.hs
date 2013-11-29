@@ -5,7 +5,7 @@
 module Instrument.Types where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent (ThreadId)
+
 import           Data.CSV.Conduit
 import           Data.Default
 import           Data.DeriveTH
@@ -14,7 +14,7 @@ import           Data.IORef         (IORef, atomicModifyIORef, newIORef,
 import qualified Data.Map           as M
 import           Data.Serialize
 import qualified Data.Text          as T
-import qualified Data.Text.Encoding as T
+
 import           Database.Redis     as H hiding (HostName (..), get)
 import           Network.HostName
 -------------------------------------------------------------------------------
