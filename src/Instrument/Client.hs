@@ -38,14 +38,16 @@ import           Instrument.Types
 -- 'time'.
 initInstrument :: ConnectInfo
                -- ^ Redis connection info
+               -> InstrumentConfig
+               -- ^ Instrument configuration. Use "def" if you don't have specific needs
                -> IO Instrument
-initInstrument conn = do
+initInstrument conn cfg = do
   p <- createInstrumentPool conn
   h        <- getHostName
   samplers <- newIORef M.empty
   counters <- newIORef M.empty
-  forkIO $ forever $ (submitSamplers h samplers p >> threadDelay 1000000)
-  forkIO $ forever $ (submitCounters h counters p >> threadDelay 1000000)
+  forkIO $ forever $ (submitSamplers h samplers p cfg >> threadDelay 1000000)
+  forkIO $ forever $ (submitCounters h counters p cfg >> threadDelay 1000000)
   return $ I h samplers counters p
 
 
@@ -65,45 +67,68 @@ mkCounterSubmission hn m i = do
 
 
 -- | Flush all samplers in Instrument
-submitSamplers :: HostName -> IORef Samplers -> Connection -> IO ()
-submitSamplers hn samplers redis = do
+submitSamplers
+  :: HostName
+  -> IORef Samplers
+  -> Connection
+  -> InstrumentConfig
+  -> IO ()
+submitSamplers hn samplers redis cfg = do
   ss <- getSamplers samplers
-  mapM_ (flushSampler hn redis) ss
+  mapM_ (flushSampler hn redis cfg) ss
 
 
 -- | Flush all samplers in Instrument
-submitCounters :: HostName -> IORef Counters -> Connection -> IO ()
-submitCounters hn cs r = do
+submitCounters
+  :: HostName
+  -> IORef Counters
+  -> Connection
+  -> InstrumentConfig
+  -> IO ()
+submitCounters hn cs r cfg = do
     ss <- M.toList `liftM` readIORef cs
-    mapM_ (flushCounter hn r) ss
+    mapM_ (flushCounter hn r cfg) ss
 
 
 -------------------------------------------------------------------------------
-submitPacket :: Serialize a => Connection -> String -> a -> IO ()
-submitPacket r m sp = runRedis r (lpush rk [encode sp]) >> return ()
+submitPacket :: Serialize a => Connection -> String -> Maybe Integer -> a -> IO ()
+submitPacket r m mbound sp = void $ runRedis r push
     where rk = B.concat [B.pack "_sq_", B.pack m]
+          push = case mbound of
+            Just n -> lpushBounded rk [encode sp] n
+            Nothing -> void $ lpush rk [encode sp]
 
 
 -------------------------------------------------------------------------------
 -- | Flush given counter to remote service and reset in-memory counter
 -- back to 0.
-flushCounter :: HostName -> Connection -> (String, C.Counter) -> IO ()
-flushCounter hn r (m, c) =
+flushCounter
+  :: HostName
+  -> Connection
+  -> InstrumentConfig
+  -> (String, C.Counter)
+  -> IO ()
+flushCounter hn r cfg (m, c) =
     C.resetCounter c >>=
     mkCounterSubmission hn m >>=
-    submitPacket r m
+    submitPacket r m (redisQueueBound cfg)
 
 
 -------------------------------------------------------------------------------
 -- | Flush given sampler to remote service and flush in-memory queue
-flushSampler :: HostName -> Connection -> (String, S.Sampler) -> IO ()
-flushSampler hostName r (name, sampler) = do
+flushSampler
+  :: HostName
+  -> Connection
+  -> InstrumentConfig
+  -> (String, S.Sampler)
+  -> IO ()
+flushSampler hostName r cfg (name, sampler) = do
   vals <- S.get sampler
   case vals of
     [] -> return ()
     _ -> do
       S.reset sampler
-      submitPacket r name =<< mkSampledSubmission hostName name vals
+      submitPacket r name (redisQueueBound cfg) =<< mkSampledSubmission hostName name vals
 
 
 -------------------------------------------------------------------------------
@@ -175,3 +200,8 @@ getRef f name mapRef = do
     return ref
 {-# INLINABLE getRef #-}
 
+-- | Bounded version of lpush which truncates after pushing
+lpushBounded :: B.ByteString -> [B.ByteString] -> Integer -> Redis ()
+lpushBounded k vs mx = void $ multiExec $ do
+  lpush k vs
+  ltrim k 0 (mx - 1)

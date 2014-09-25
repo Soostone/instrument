@@ -28,15 +28,15 @@ infrastructure.
 * A stand-alone background worker that crunches the data in the redis
   queue and emits the aggregate results into one of the backends we
   support.
-  
+
 ### Overall Workflow
 
 Each application maintains an in-memory buffer (behind a forkIO) that
 is limited to 1000 samples per key/counter. Every second this buffer
 gets pre-aggregated and results get sent to the central redis server.
 The worker application that processes these packets to produce the
-final output to be fed to the backend. 
-  
+final output to be fed to the backend.
+
 ## Backends
 
 ### Graphite
@@ -84,7 +84,8 @@ worker = initWorkerCSV redisInfo "instrument.csv" 10
 
 -- | Our client application
 myApp = do
-  inst <- initInstrument redisInfo
+  let cfg = ICfg { redisQueueBound = Just 1000000} -- or def for no bounding
+  inst <- initInstrument redisInfo cfg
   timeI "someFunctionCall" inst $ myFunction
 
 
@@ -106,5 +107,3 @@ myFunction = threadDelay 1200 >> print "Hello"
 * Can we emit key/value pairs? How would we display them?
 * Sampling support instead of capping collected samples at 1000?
 * Use of constant-space, running stats? (Might allow for lossless sampling)
-
-

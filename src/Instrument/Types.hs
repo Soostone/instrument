@@ -48,6 +48,13 @@ data Instrument = I {
     , redis    :: Connection
     }
 
+data InstrumentConfig = ICfg {
+      redisQueueBound :: Maybe Integer
+    }
+
+instance Default InstrumentConfig where
+  def = ICfg Nothing
+
 
 -- | Submitted package of collected samples
 data SubmissionPacket = SP {
