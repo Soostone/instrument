@@ -99,6 +99,12 @@ myFunction = threadDelay 1200 >> print "Hello"
 
 ## Quirks and Limitations
 
+The redis queue bounding functionality drops recent items first, which
+effectively means if the queue gets too big it will stop accepting new
+data. This way when there's an actual problem, the data will holes in
+the data where the problem actually occurred, rather than just having
+a fixed window.
+
 ## TODO
 
 * Go through the design refactor/cleanup various bits.

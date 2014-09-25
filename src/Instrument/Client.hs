@@ -200,8 +200,10 @@ getRef f name mapRef = do
     return ref
 {-# INLINABLE getRef #-}
 
--- | Bounded version of lpush which truncates after pushing
+-- | Bounded version of lpush which truncates *new* data first. This
+-- effectively stops accepting data until the queue shrinks below the
+-- bound.
 lpushBounded :: B.ByteString -> [B.ByteString] -> Integer -> Redis ()
 lpushBounded k vs mx = void $ multiExec $ do
   lpush k vs
-  ltrim k 0 (mx - 1)
+  ltrim k (-mx) (-1)
