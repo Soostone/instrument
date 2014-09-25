@@ -105,6 +105,10 @@ data. This way when there's an actual problem, the data will holes in
 the data where the problem actually occurred, rather than just having
 a fixed window.
 
+The redis queue feature itself uses gzip compression on its data as of
+0.2.0.0. If you are using a previous version, you should purge your
+instrumentation keys in redis before upgrading.
+
 ## TODO
 
 * Go through the design refactor/cleanup various bits.

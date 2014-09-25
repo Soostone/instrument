@@ -12,10 +12,12 @@ module Instrument.Client
     ) where
 
 -------------------------------------------------------------------------------
+import           Codec.Compression.GZip
 import           Control.Concurrent     (ThreadId, forkIO, threadDelay)
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
+import           Data.ByteString.Lazy   (fromStrict, toStrict)
 import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
 import qualified Data.Map               as M
@@ -95,8 +97,8 @@ submitPacket :: Serialize a => Connection -> String -> Maybe Integer -> a -> IO 
 submitPacket r m mbound sp = void $ runRedis r push
     where rk = B.concat [B.pack "_sq_", B.pack m]
           push = case mbound of
-            Just n -> lpushBounded rk [encode sp] n
-            Nothing -> void $ lpush rk [encode sp]
+            Just n -> lpushBounded rk [encode' sp] n
+            Nothing -> void $ lpush rk [encode' sp]
 
 
 -------------------------------------------------------------------------------
@@ -207,3 +209,8 @@ lpushBounded :: B.ByteString -> [B.ByteString] -> Integer -> Redis ()
 lpushBounded k vs mx = void $ multiExec $ do
   lpush k vs
   ltrim k (-mx) (-1)
+
+
+-- | Serialize and compress with GZip
+encode' :: Serialize a => a -> B.ByteString
+encode' = toStrict . compress . fromStrict . encode
