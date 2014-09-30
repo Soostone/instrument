@@ -8,14 +8,19 @@ module Instrument.Utils
     , showBS
     , collect
     , noDots
+    , encodeCompress
+    , decodeCompress
     ) where
 
 
 -------------------------------------------------------------------------------
-import qualified Data.ByteString.Char8 as B
-import qualified Data.Map              as M
-import           Data.Text             (Text)
-import qualified Data.Text             as T
+import           Codec.Compression.GZip
+import qualified Data.ByteString.Char8  as B
+import           Data.ByteString.Lazy   (fromStrict, toStrict)
+import qualified Data.Map               as M
+import           Data.Serialize
+import           Data.Text              (Text)
+import qualified Data.Text              as T
 import           Numeric
 -------------------------------------------------------------------------------
 
@@ -57,7 +62,7 @@ formatDecimal
     -> Bool
     -- ^ Add thousands sep?
     -> a
-    -- ^ Nmber
+    -- ^ Number
     -> Text
 formatDecimal n th i =
     let res = T.pack . showFFloat (Just n) i $ ""
@@ -71,3 +76,14 @@ addThousands t = T.concat [n', dec]
     where
       (n,dec) = T.span (/= '.') t
       n' = T.reverse . T.intercalate "," . T.chunksOf 3 . T.reverse $ n
+
+
+-------------------------------------------------------------------------------
+-- | Serialize and compress with GZip in that order
+encodeCompress :: Serialize a => a -> B.ByteString
+encodeCompress = toStrict . compress . encodeLazy
+
+-------------------------------------------------------------------------------
+-- | Decompress from GZip and deserialize in that order
+decodeCompress :: Serialize a => B.ByteString -> Either String a
+decodeCompress = decodeLazy . decompress . fromStrict

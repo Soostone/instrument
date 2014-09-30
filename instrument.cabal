@@ -44,3 +44,21 @@ library
     , errors
     , network
     , zlib
+
+test-suite test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  ghc-options: -Wall -threaded -rtsopts -O0
+  hs-source-dirs:
+    test/src
+  build-depends:
+     base
+   , data-default
+   , hedis
+   , HUnit
+   , instrument
+   , tasty
+   , tasty-quickcheck
+   , tasty-hunit
+   , transformers
+   , QuickCheck

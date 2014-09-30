@@ -12,12 +12,10 @@ module Instrument.Client
     ) where
 
 -------------------------------------------------------------------------------
-import           Codec.Compression.GZip
 import           Control.Concurrent     (ThreadId, forkIO, threadDelay)
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
-import           Data.ByteString.Lazy   (fromStrict, toStrict)
 import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
 import qualified Data.Map               as M
@@ -29,6 +27,7 @@ import qualified Instrument.Counter     as C
 import qualified Instrument.Measurement as TM
 import qualified Instrument.Sampler     as S
 import           Instrument.Types
+import           Instrument.Utils
 -------------------------------------------------------------------------------
 
 
@@ -44,13 +43,17 @@ initInstrument :: ConnectInfo
                -- ^ Instrument configuration. Use "def" if you don't have specific needs
                -> IO Instrument
 initInstrument conn cfg = do
-  p <- createInstrumentPool conn
-  h        <- getHostName
-  samplers <- newIORef M.empty
-  counters <- newIORef M.empty
-  forkIO $ forever $ (submitSamplers h samplers p cfg >> threadDelay 1000000)
-  forkIO $ forever $ (submitCounters h counters p cfg >> threadDelay 1000000)
-  return $ I h samplers counters p
+    p <- createInstrumentPool conn
+    h        <- getHostName
+    samplers <- newIORef M.empty
+    counters <- newIORef M.empty
+    forkIO $ indefinitely $ submitSamplers h samplers p cfg
+    forkIO $ indefinitely $ submitCounters h counters p cfg
+    return $ I h samplers counters p
+  where
+    indefinitely = forever . delayed
+    delayed = (>> threadDelay delay)
+    delay = 1000000
 
 
 
@@ -97,8 +100,8 @@ submitPacket :: Serialize a => Connection -> String -> Maybe Integer -> a -> IO 
 submitPacket r m mbound sp = void $ runRedis r push
     where rk = B.concat [B.pack "_sq_", B.pack m]
           push = case mbound of
-            Just n -> lpushBounded rk [encode' sp] n
-            Nothing -> void $ lpush rk [encode' sp]
+            Just n -> lpushBounded rk [encodeCompress sp] n
+            Nothing -> void $ lpush rk [encodeCompress sp]
 
 
 -------------------------------------------------------------------------------
@@ -209,8 +212,3 @@ lpushBounded :: B.ByteString -> [B.ByteString] -> Integer -> Redis ()
 lpushBounded k vs mx = void $ multiExec $ do
   lpush k vs
   ltrim k (-mx) (-1)
-
-
--- | Serialize and compress with GZip
-encode' :: Serialize a => a -> B.ByteString
-encode' = toStrict . compress . fromStrict . encode

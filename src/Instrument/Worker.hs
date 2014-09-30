@@ -9,13 +9,11 @@ module Instrument.Worker
     ) where
 
 -------------------------------------------------------------------------------
-import           Codec.Compression.GZip (decompress)
 import           Control.Concurrent
 import           Control.Error
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
-import           Data.ByteString.Lazy   (fromStrict, toStrict)
 import           Data.CSV.Conduit
 import           Data.Default
 import qualified Data.Map               as M
@@ -198,7 +196,7 @@ popLMany k n = do
       Right xs -> return $ mapMaybe conv $ catMaybes xs
     where
       pop = R.lpop k
-      conv x =  hush $ decode' x
+      conv x =  hush $ decodeCompress x
 
 
 -------------------------------------------------------------------------------
@@ -209,8 +207,3 @@ dbg _ = return ()
 -- ------------------------------------------------------------------------------
 -- dbg :: (MonadIO m) => String -> m ()
 -- dbg s = debug $ "Instrument.Worker: " ++ s
-
-
--------------------------------------------------------------------------------
-decode' :: Serialize a => B.ByteString -> Either String a
-decode' = decode . toStrict . decompress . fromStrict
