@@ -13,8 +13,11 @@ module Instrument.Client
 
 -------------------------------------------------------------------------------
 import           Control.Concurrent     (ThreadId, forkIO, threadDelay)
+import           Control.Exception      (SomeException)
 import           Control.Monad
+import           Control.Monad.Catch    (Handler (..))
 import           Control.Monad.IO.Class
+import           Control.Retry
 import qualified Data.ByteString.Char8  as B
 import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
@@ -22,6 +25,7 @@ import qualified Data.Map               as M
 import           Data.Serialize
 import           Database.Redis         as R hiding (HostName (..), time)
 import           Network.HostName
+import           System.IO
 -------------------------------------------------------------------------------
 import qualified Instrument.Counter     as C
 import qualified Instrument.Measurement as TM
@@ -51,11 +55,30 @@ initInstrument conn cfg = do
     forkIO $ indefinitely $ submitCounters h counters p cfg
     return $ I h samplers counters p
   where
-    indefinitely = forever . delayed
+    -- go into backoff if there's an error. when recovered, fall back
+    -- to every 1s
+    indefinitely = forever . delayed . logAndBackoff
     delayed = (>> threadDelay delay)
-    delay = 1000000
+    delay = seconds 1
 
 
+-------------------------------------------------------------------------------
+logAndBackoff :: IO () -> IO ()
+logAndBackoff = recovering policy [h]
+  where
+    policy = capDelay (seconds 60) (exponentialBackoff (milliseconds 50))
+    h _ = Handler (\e -> logError e >> return True)
+    logError :: SomeException -> IO ()
+    logError e = hPutStrLn stderr msg
+      where
+        msg = "Caught exception in client thread: " ++ show e ++ ". Retrying..."
+
+
+seconds :: Int -> Int
+seconds = (* milliseconds 1000)
+
+milliseconds :: Int -> Int
+milliseconds = (* 1000)
 
 -------------------------------------------------------------------------------
 mkSampledSubmission :: HostName -> String -> [Double] -> IO SubmissionPacket
