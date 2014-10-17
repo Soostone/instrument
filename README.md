@@ -35,7 +35,9 @@ Each application maintains an in-memory buffer (behind a forkIO) that
 is limited to 1000 samples per key/counter. Every second this buffer
 gets pre-aggregated and results get sent to the central redis server.
 The worker application that processes these packets to produce the
-final output to be fed to the backend.
+final output to be fed to the backend. If there is an outage with the
+redis server, instrument will exponentially back up to 60 seconds
+between retries indefinitely.
 
 ## Backends
 

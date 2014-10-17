@@ -1,7 +1,4 @@
 {-# LANGUAGE BangPatterns    #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
-
 module Instrument.Client
     ( Instrument
     , initInstrument
@@ -12,7 +9,7 @@ module Instrument.Client
     ) where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent     (ThreadId, forkIO, threadDelay)
+import           Control.Concurrent     (forkIO)
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
@@ -20,7 +17,7 @@ import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
 import qualified Data.Map               as M
 import           Data.Serialize
-import           Database.Redis         as R hiding (HostName (..), time)
+import           Database.Redis         as R hiding (HostName, time)
 import           Network.HostName
 -------------------------------------------------------------------------------
 import qualified Instrument.Counter     as C
@@ -45,23 +42,19 @@ initInstrument :: ConnectInfo
 initInstrument conn cfg = do
     p <- createInstrumentPool conn
     h        <- getHostName
-    samplers <- newIORef M.empty
-    counters <- newIORef M.empty
-    forkIO $ indefinitely $ submitSamplers h samplers p cfg
-    forkIO $ indefinitely $ submitCounters h counters p cfg
-    return $ I h samplers counters p
+    smplrs <- newIORef M.empty
+    ctrs <- newIORef M.empty
+    forkIO $ indefinitely' $ submitSamplers h smplrs p cfg
+    forkIO $ indefinitely' $ submitCounters h ctrs p cfg
+    return $ I h smplrs ctrs p
   where
-    indefinitely = forever . delayed
-    delayed = (>> threadDelay delay)
-    delay = 1000000
-
-
+    indefinitely' = indefinitely "Client" (seconds 1)
 
 -------------------------------------------------------------------------------
 mkSampledSubmission :: HostName -> String -> [Double] -> IO SubmissionPacket
-mkSampledSubmission hostName nm vals = do
+mkSampledSubmission host nm vals = do
   ts <- TM.getTime
-  return $ SP ts hostName nm (Samples vals)
+  return $ SP ts host nm (Samples vals)
 
 
 -------------------------------------------------------------------------------
@@ -78,9 +71,9 @@ submitSamplers
   -> Connection
   -> InstrumentConfig
   -> IO ()
-submitSamplers hn samplers redis cfg = do
-  ss <- getSamplers samplers
-  mapM_ (flushSampler hn redis cfg) ss
+submitSamplers hn smplrs rds cfg = do
+  ss <- getSamplers smplrs
+  mapM_ (flushSampler hn rds cfg) ss
 
 
 -- | Flush all samplers in Instrument
@@ -127,13 +120,13 @@ flushSampler
   -> InstrumentConfig
   -> (String, S.Sampler)
   -> IO ()
-flushSampler hostName r cfg (name, sampler) = do
+flushSampler host r cfg (name, sampler) = do
   vals <- S.get sampler
   case vals of
     [] -> return ()
     _ -> do
       S.reset sampler
-      submitPacket r name (redisQueueBound cfg) =<< mkSampledSubmission hostName name vals
+      submitPacket r name (redisQueueBound cfg) =<< mkSampledSubmission host name vals
 
 
 -------------------------------------------------------------------------------
@@ -162,7 +155,7 @@ timeI name i act = do
   liftIO $ sampleI nm secs i
   return res
   where
-    nm = concat ["time.", name]
+    nm = "time." ++ name
 
 
 -- | Record given measurement under the given label.
@@ -179,7 +172,8 @@ sampleI name v i = liftIO $ S.sample v =<< getSampler name i
 
 
 -------------------------------------------------------------------------------
-getCounter nm i = getRef (C.newCounter) nm (counters i)
+getCounter :: String -> Instrument -> IO C.Counter
+getCounter nm i = getRef C.newCounter nm (counters i)
 
 
 -- | Get or create a sampler under given name
@@ -195,14 +189,14 @@ getSamplers ss = M.toList `fmap` readIORef ss
 -- | Lookup a 'Ref' by name in the given map.  If no 'Ref' exists
 -- under the given name, create a new one, insert it into the map and
 -- return it.
+getRef :: Ord k => IO b -> k -> IORef (M.Map k b) -> IO b
 getRef f name mapRef = do
     empty <- f
-    ref <- atomicModifyIORef mapRef $ \ m ->
+    atomicModifyIORef mapRef $ \ m ->
         case M.lookup name m of
             Nothing  -> let m' = M.insert name empty m
                         in (m', empty)
             Just ref -> (m, ref)
-    return ref
 {-# INLINABLE getRef #-}
 
 -- | Bounded version of lpush which truncates *new* data first. This

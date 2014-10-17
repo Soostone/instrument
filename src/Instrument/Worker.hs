@@ -1,7 +1,5 @@
 {-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-
 module Instrument.Worker
     ( initWorkerCSV
     , initWorkerGraphite
@@ -9,7 +7,6 @@ module Instrument.Worker
     ) where
 
 -------------------------------------------------------------------------------
-import           Control.Concurrent
 import           Control.Error
 import           Control.Monad
 import           Control.Monad.IO.Class
@@ -49,9 +46,9 @@ initWorkerCSV conn fp n = do
   !res <- fileExist fp
   !h <- openFile fp AppendMode
   hSetBuffering h LineBuffering
-  unless res $ do
+  unless res $
     T.hPutStrLn h $ rowToStr defCSVSettings . M.keys $ aggToCSV def
-  initWorker conn n $ putAggregateCSV h
+  initWorker "CSV Worker" conn n $ putAggregateCSV h
 
 
 -------------------------------------------------------------------------------
@@ -65,18 +62,22 @@ initWorkerGraphite
     -- ^ Graphite host
     -> Int
     -- ^ Graphite port
-    -> IO b
+    -> IO ()
 initWorkerGraphite conn n server port = do
     h <- connectTo server (PortNumber $ fromIntegral port)
     hSetBuffering h LineBuffering
-    initWorker conn n $ putAggregateGraphite h
+    initWorker "Graphite Worker" conn n $ putAggregateGraphite h
 
 
 -------------------------------------------------------------------------------
--- | Generic utility for making worker backends
-initWorker conn n f = do
-  p <- createInstrumentPool conn
-  forever $ work p n f >> threadDelay (n * 1000000)
+-- | Generic utility for making worker backends. Will retry
+-- indefinitely with exponential backoff.
+initWorker :: String -> ConnectInfo -> Int -> AggProcess -> IO ()
+initWorker wname conn n f = do
+    p <- createInstrumentPool conn
+    indefinitely' $ work p n f
+  where
+    indefinitely' = indefinitely wname (seconds n)
 
 
 
@@ -102,7 +103,7 @@ mkStats s = Stats { smean = mean s
 -- | Go over all pending stats buffers in redis.
 work :: R.Connection -> Int -> AggProcess -> IO ()
 work r n f = runRedis r $ do
-    dbg $ "entered work block"
+    dbg "entered work block"
     res <- R.keys (B.pack "_sq_*")
     case res of
       Left _ -> return ()
@@ -126,7 +127,7 @@ processSampler n f k = do
       let nm = spName . head $ packets
           byHost = collect packets spHostName id
           mkAgg xs =
-              case (spPayload $ head xs) of
+              case spPayload $ head xs of
                 Samples _ -> AggStats . mkStats . V.fromList .
                              concatMap (unSamples . spPayload) $
                              xs
@@ -156,6 +157,7 @@ putAggregateCSV h agg = liftIO $ T.hPutStrLn h d
   where d = rowToStr defCSVSettings $ aggToCSV agg
 
 
+typePrefix :: AggPayload -> T.Text
 typePrefix AggStats{} = "samples"
 typePrefix AggCount{} = "counts"
 
@@ -171,7 +173,7 @@ putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
           , typePrefix (aggPayload agg), "."
           ,  T.pack (aggName agg), "."
           , m, "."
-          , (T.decodeUtf8 $ aggGroup agg), " "
+          , T.decodeUtf8 $ aggGroup agg, " "
           , val, " "
           , ts ]
 
@@ -201,6 +203,7 @@ popLMany k n = do
 
 -------------------------------------------------------------------------------
 -- | Need to pull in a debugging library here.
+dbg :: (Monad m) => String -> m ()
 dbg _ = return ()
 
 
