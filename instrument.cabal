@@ -43,7 +43,7 @@ library
     , unix
     , errors
     , network
-    , zlib
+    , zlib          >= 0.6 && < 0.7
     , retry
     , exceptions
 
