@@ -39,7 +39,7 @@ import qualified Instrument.Client      as I
 class HasInstrument m where
   getInstrument :: m I.Instrument
 
-instance (MonadReader I.Instrument m) => HasInstrument m where
+instance (Monad m) => HasInstrument (ReaderT I.Instrument m) where
   getInstrument = ask
 
 
