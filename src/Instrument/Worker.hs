@@ -2,8 +2,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Instrument.Worker
     ( initWorkerCSV
+    , initWorkerCSV'
     , initWorkerGraphite
+    , initWorkerGraphite'
     , work
+    , initWorker
     , AggProcess
     ) where
 
@@ -43,13 +46,25 @@ initWorkerCSV
   -> Int
   -- ^ Aggregation period / flush interval in seconds
   -> IO ()
-initWorkerCSV conn fp n = do
+initWorkerCSV conn fp n =
+  initWorker "CSV Worker" conn n =<< initWorkerCSV' fp
+
+
+-------------------------------------------------------------------------------
+-- | Create an AggProcess that dumps to CSV. Use this to compose with
+-- other AggProcesses
+initWorkerCSV'
+  :: FilePath
+  -- ^ Target file name
+  -- ^ Aggregation period / flush interval in seconds
+  -> IO AggProcess
+initWorkerCSV' fp = do
   !res <- fileExist fp
   !h <- openFile fp AppendMode
   hSetBuffering h LineBuffering
   unless res $
     T.hPutStrLn h $ rowToStr defCSVSettings . M.keys $ aggToCSV def
-  initWorker "CSV Worker" conn n $ putAggregateCSV h
+  return $ putAggregateCSV h
 
 
 -------------------------------------------------------------------------------
@@ -64,10 +79,23 @@ initWorkerGraphite
     -> Int
     -- ^ Graphite port
     -> IO ()
-initWorkerGraphite conn n server port = do
+initWorkerGraphite conn n server port =
+    initWorker "Graphite Worker" conn n =<< initWorkerGraphite' server port
+
+
+-------------------------------------------------------------------------------
+-- | Crete an AggProcess that dumps to graphite. Use this to compose
+-- with other AggProcesses
+initWorkerGraphite'
+    :: HostName
+    -- ^ Graphite host
+    -> Int
+    -- ^ Graphite port
+    -> IO AggProcess
+initWorkerGraphite' server port = do
     h <- connectTo server (PortNumber $ fromIntegral port)
     hSetBuffering h LineBuffering
-    initWorker "Graphite Worker" conn n $ putAggregateGraphite h
+    return $ putAggregateGraphite h
 
 
 -------------------------------------------------------------------------------
