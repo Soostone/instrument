@@ -4,6 +4,7 @@ module Instrument.Worker
     ( initWorkerCSV
     , initWorkerGraphite
     , work
+    , AggProcess
     ) where
 
 -------------------------------------------------------------------------------
