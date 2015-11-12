@@ -44,7 +44,7 @@ library
     , errors
     , network
     , zlib          >= 0.6 && < 0.7
-    , retry
+    , retry         >= 0.7 && < 0.8
     , exceptions
 
 test-suite test

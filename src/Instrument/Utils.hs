@@ -111,7 +111,7 @@ indefinitely ctx n = forever . delayed . logAndBackoff ctx
 
 -------------------------------------------------------------------------------
 logAndBackoff :: String -> IO () -> IO ()
-logAndBackoff ctx = recovering policy [h]
+logAndBackoff ctx = recovering policy [h] . const
   where
     policy = capDelay (seconds 60) (exponentialBackoff (milliseconds 50))
     h _ = Handler (\e -> logError e >> return True)
