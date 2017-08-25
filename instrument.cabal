@@ -11,6 +11,10 @@ build-type:          Simple
 cabal-version:       >=1.8
 
 
+flag lib-Werror
+  default: False
+  manual: True
+
 library
   hs-source-dirs: src
   exposed-modules:
@@ -23,6 +27,11 @@ library
     Instrument.Types
     Instrument.Utils
     Instrument.Worker
+
+  if flag(lib-Werror)
+    ghc-options: -Werror
+
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
 
   build-depends:
       base >= 4.5 && < 5
@@ -50,7 +59,9 @@ library
 test-suite test
   type: exitcode-stdio-1.0
   main-is: Main.hs
-  ghc-options: -Wall -threaded -rtsopts -O0
+  if flag(lib-Werror)
+    ghc-options: -Werror
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -O0
   hs-source-dirs:
     test/src
   build-depends:

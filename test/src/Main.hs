@@ -7,6 +7,7 @@ import Instrument.Tests.Client (clientTests)
 import Instrument.Tests.Utils (utilsTests)
 -------------------------------------------------------------------------------
 
+main :: IO ()
 main = defaultMain $ testGroup "tests"
     [ utilsTests
     , clientTests

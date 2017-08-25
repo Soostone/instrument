@@ -56,19 +56,9 @@ modifyMVar_mask_ m io =
     putMVar m $! a'
 
 
-{-# INLINE withMVar_mask #-}
-withMVar_mask :: MVar a -> (a -> IO b) -> IO b
-withMVar_mask m io =
-  mask_ $ do
-    a <- takeMVar m
-    b <- io a `onException` putMVar m a
-    putMVar m a
-    return b
-
-
 -------------------------------------------------------------------------------
-newBuffer :: a -> Int -> IO (Buffer a)
-newBuffer a lim = do
+newBuffer :: Int -> IO (Buffer a)
+newBuffer lim = do
   pos  <- newMVar 0
   entries <- V.new lim
   return (B lim entries pos)
@@ -89,7 +79,7 @@ writeBuffer (B size contents wposMV) x = modifyMVar_mask_ wposMV $
 
 -------------------------------------------------------------------------------
 getBuffer :: Buffer a -> IO [a]
-getBuffer (B size contents pos) = do
+getBuffer (B _size contents pos) = do
   wpos <- modifyMVar_mask pos $ \ wpos -> return (wpos, wpos)
   forM [0.. (wpos - 1)] $ \ i -> (V.read contents i)
 
@@ -97,7 +87,7 @@ getBuffer (B size contents pos) = do
 
 -------------------------------------------------------------------------------
 resetBuffer :: Buffer a -> IO ()
-resetBuffer (B size els pos) = modifyMVar_mask_ pos (const (return 0))
+resetBuffer (B _size _els pos) = modifyMVar_mask_ pos (const (return 0))
 
 
 
@@ -108,7 +98,7 @@ newtype Sampler = S { unS :: Buffer Double }
 
 -- | Create a new, empty sampler
 new :: Int -> IO Sampler
-new i = S `fmap` newBuffer 0 i
+new i = S `fmap` newBuffer i
 
 
 -------------------------------------------------------------------------------

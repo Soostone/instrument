@@ -137,6 +137,7 @@ mkStatsFields Aggregated{..}  = (els, ts)
 
 -------------------------------------------------------------------------------
 -- | Expand count aggregation to have the full columns
+aggToCSV :: Aggregated -> M.Map Text Text
 aggToCSV agg@Aggregated{..} = M.union els defFields
   where
     els :: MapRow Text

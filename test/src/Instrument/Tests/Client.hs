@@ -18,10 +18,12 @@ import           Instrument.Types
 import           Instrument.Worker
 -------------------------------------------------------------------------------
 
+clientTests :: TestTree
 clientTests = testGroup "Instrument.Client"
     [ withRedisCleanup $ testCase "queue bounding works" . queue_bounding_test
     ]
 
+queue_bounding_test :: IO Connection -> IO ()
 queue_bounding_test mkConn = do
     conn <- mkConn
     instr <- initInstrument redisCI icfg
@@ -31,7 +33,7 @@ queue_bounding_test mkConn = do
     -- bounds will drop these
     sampleI key 100 instr
     sleepFlush
-    forkIO $ work conn 1 (liftIO . putMVar agg)
+    void $ forkIO $ work conn 1 (liftIO . putMVar agg)
     Aggregated { aggPayload = AggStats Stats {..} } <- takeMVar agg
     assertEqual "throws away newer data exceeding bounds"
                 (2, 1, 1, 2)
@@ -39,14 +41,18 @@ queue_bounding_test mkConn = do
   where
     sleepFlush =   threadDelay 1100000
 
+withRedisCleanup :: (IO Connection -> TestTree) -> TestTree
 withRedisCleanup = withResource (connect redisCI) cleanup
   where
     cleanup conn = void $ runRedis conn $ do
-      del ["_sq_instrument-test"]
+      _ <- del ["_sq_instrument-test"]
       quit
 
+redisCI :: ConnectInfo
 redisCI = defaultConnectInfo
 
+icfg :: InstrumentConfig
 icfg = def { redisQueueBound = Just 2 }
 
+key :: String
 key = "instrument-test"

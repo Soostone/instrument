@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns    #-}
+{-# LANGUAGE BangPatterns #-}
 module Instrument.Client
     ( Instrument
     , initInstrument
@@ -44,8 +44,8 @@ initInstrument conn cfg = do
     h        <- getHostName
     smplrs <- newIORef M.empty
     ctrs <- newIORef M.empty
-    forkIO $ indefinitely' $ submitSamplers h smplrs p cfg
-    forkIO $ indefinitely' $ submitCounters h ctrs p cfg
+    void $ forkIO $ indefinitely' $ submitSamplers h smplrs p cfg
+    void $ forkIO $ indefinitely' $ submitCounters h ctrs p cfg
     return $ I h smplrs ctrs p
   where
     indefinitely' = indefinitely "Client" (seconds 1)
@@ -89,12 +89,12 @@ submitCounters hn cs r cfg = do
 
 
 -------------------------------------------------------------------------------
-submitPacket :: Serialize a => Connection -> String -> Maybe Integer -> a -> IO ()
-submitPacket r m mbound sp = void $ runRedis r push
+submitPacket :: Serialize a => R.Connection -> String -> Maybe Integer -> a -> IO ()
+submitPacket r m mbound sp = void $ R.runRedis r push
     where rk = B.concat [B.pack "_sq_", B.pack m]
           push = case mbound of
-            Just n -> lpushBounded rk [encodeCompress sp] n
-            Nothing -> void $ lpush rk [encodeCompress sp]
+            Just n  -> lpushBounded rk [encodeCompress sp] n
+            Nothing -> void $ R.lpush rk [encodeCompress sp]
 
 
 -------------------------------------------------------------------------------
@@ -204,5 +204,5 @@ getRef f name mapRef = do
 -- bound.
 lpushBounded :: B.ByteString -> [B.ByteString] -> Integer -> Redis ()
 lpushBounded k vs mx = void $ multiExec $ do
-  lpush k vs
+  _ <- lpush k vs
   ltrim k (-mx) (-1)

@@ -30,7 +30,7 @@ readCounter (Counter i) = readIORef i
 -- | Reset the counter while reading it
 resetCounter :: Counter -> IO Int
 resetCounter (Counter i) = atomicModifyIORef i f
-    where f i = (0, i)
+    where f i' = (0, i')
 
 -------------------------------------------------------------------------------
 increment :: Counter -> IO ()
