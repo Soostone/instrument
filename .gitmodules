@@ -1,0 +1,3 @@
+[submodule "deps/safecopy-hunit"]
+	path = deps/safecopy-hunit
+	url = git@github.com:Soostone/safecopy-hunit.git

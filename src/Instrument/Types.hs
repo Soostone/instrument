@@ -3,7 +3,20 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
-module Instrument.Types where
+module Instrument.Types
+  ( createInstrumentPool
+  , Samplers
+  , Counters
+  , Instrument(..)
+  , InstrumentConfig(..)
+  , SubmissionPacket(..)
+  , Payload(..)
+  , Aggregated(..)
+  , AggPayload(..)
+  , mkStatsFields
+  , aggToCSV
+  , Stats(..)
+  ) where
 
 -------------------------------------------------------------------------------
 import qualified Data.ByteString.Char8 as B
@@ -11,6 +24,7 @@ import           Data.CSV.Conduit
 import           Data.Default
 import           Data.IORef
 import qualified Data.Map              as M
+import qualified Data.SafeCopy         as SC
 import           Data.Serialize
 import           Data.Text             (Text)
 import qualified Data.Text             as T
@@ -79,6 +93,7 @@ data Payload
 
 instance Serialize Payload
 
+
 -------------------------------------------------------------------------------
 data Aggregated = Aggregated {
       aggTS      :: Double
@@ -101,6 +116,8 @@ data AggPayload
     deriving (Eq,Show, Generic)
 
 instance Serialize AggPayload
+
+
 
 
 instance Default AggPayload where
@@ -175,3 +192,9 @@ instance Default Stats where
 instance Serialize Stats
 
 
+
+$(SC.deriveSafeCopy 0 'SC.base ''Payload)
+$(SC.deriveSafeCopy 0 'SC.base ''SubmissionPacket)
+$(SC.deriveSafeCopy 0 'SC.base ''AggPayload)
+$(SC.deriveSafeCopy 0 'SC.base ''Aggregated)
+$(SC.deriveSafeCopy 0 'SC.base ''Stats)

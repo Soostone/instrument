@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 module Instrument.Tests.Utils
     ( utilsTests
     ) where
@@ -5,12 +8,18 @@ module Instrument.Tests.Utils
 -------------------------------------------------------------------------------
 import           Control.Concurrent
 import           Control.Monad
+import qualified Data.ByteString       as B
 import           Data.IORef
+import qualified Data.Map              as M
+import           Data.Serialize
+import           Path
+import qualified Path.IO               as PIO
 import           System.Timeout
 import           Test.Tasty
 import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
 -------------------------------------------------------------------------------
+import           Instrument.Types
 import           Instrument.Utils
 -------------------------------------------------------------------------------
 
@@ -18,15 +27,47 @@ import           Instrument.Utils
 
 utilsTests :: TestTree
 utilsTests = testGroup "Instrument.Utils"
-    [ testProperty "encode/decode compress roundtrip" encode_decode_roundtrip
+    [ encodeDecodeTests
     , withResource spawnWorker killWorker $ testCase "indefinitely retries" . indefinitely_retry
     ]
 
+
+-------------------------------------------------------------------------------
+encodeDecodeTests :: TestTree
+encodeDecodeTests = testGroup "encodeCompress/decodeCompress"
+  [ testProperty "encode/decode compress roundtrip" encode_decode_roundtrip
+  , testCase "Stats decode" $
+      testDecode $(mkRelFile "test/data/Instrument/Types/Stats.gz") stats
+  , testCase "Payload decode" $
+      testDecode $(mkRelFile "test/data/Instrument/Types/Payload.gz") payload
+  , testCase "SubmissionPacket decode" $
+      testDecode $(mkRelFile "test/data/Instrument/Types/SubmissionPacket.gz") submissionPacket
+  , testCase "Aggregated decode" $
+      testDecode $(mkRelFile "test/data/Instrument/Types/Aggregated.gz") aggregated
+  ]
+  where
+    stats = Stats 1 2 3 4 5 6 7 8 9 (M.singleton 10 11)
+    payload = Samples [1.2, 2.3, 4.5]
+    submissionPacket = SP 3.4 "example.org" "metric" payload
+    aggregated = Aggregated 3.4 "metric" "grp" (AggStats stats)
+    testDecode :: forall a b. (Serialize a, Eq a, Show a) => Path b File -> a -> Assertion
+    testDecode fp v = do
+      exists <- PIO.doesFileExist fp
+      unless exists $ do
+        PIO.ensureDir (parent fp)
+        B.writeFile (toFilePath fp) (encodeCompress v)
+      res <- decodeCompress <$> B.readFile (toFilePath fp)
+      (res :: Either String a) @?= Right v
+
+
+-------------------------------------------------------------------------------
 encode_decode_roundtrip :: String -> Property
 encode_decode_roundtrip a = roundtrip a === Right a
   where
     roundtrip = decodeCompress . encodeCompress
 
+
+-------------------------------------------------------------------------------
 indefinitely_retry :: IO (MVar (), t1, t) -> IO ()
 indefinitely_retry setup = do
     (called, _signal, _) <- setup
@@ -34,15 +75,21 @@ indefinitely_retry setup = do
     assertEqual "retries until success" (Just ()) wasCalled
   where
 
+
+-------------------------------------------------------------------------------
 spawnWorker :: IO (MVar (), IO (), ThreadId)
 spawnWorker = do
   (called, signal) <- nopeNopeYep
   tid <- forkIO $ indefinitely "Test Worker" 0 signal
   return (called, signal, tid)
 
+
+-------------------------------------------------------------------------------
 killWorker :: (t1, t, ThreadId) -> IO ()
 killWorker (_, _, tid) = killThread tid
 
+
+-------------------------------------------------------------------------------
 nopeNopeYep :: IO (MVar (), IO ())
 nopeNopeYep = do
     counter <- newIORef (1 :: Int)

@@ -55,6 +55,7 @@ library
     , zlib          >= 0.6 && < 0.7
     , retry         >= 0.7 && < 0.8
     , exceptions
+    , safecopy
 
 test-suite test
   type: exitcode-stdio-1.0
@@ -70,8 +71,14 @@ test-suite test
    , hedis
    , HUnit
    , instrument
+   , safecopy-hunit
    , tasty
    , tasty-quickcheck
    , tasty-hunit
    , transformers
    , QuickCheck
+   , path >= 0.6.0
+   , path-io
+   , containers
+   , cereal
+   , bytestring
