@@ -1,4 +1,5 @@
 # instrument - Haskell production-grade code instrumentation
+[![Build Status](https://travis-ci.org/Soostone/instrument.svg?branch=master)](https://travis-ci.org/Soostone/instrument)
 
 
 ## Purpose
