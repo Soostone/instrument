@@ -18,6 +18,7 @@ import qualified Data.ByteString.Char8  as B
 import           Data.CSV.Conduit
 import           Data.Default
 import qualified Data.Map               as M
+import qualified Data.SafeCopy          as SC
 import           Data.Serialize
 import qualified Data.Text              as T
 import qualified Data.Text.Encoding     as T
@@ -135,7 +136,7 @@ work r n f = runRedis r $ do
     dbg "entered work block"
     res <- R.keys (B.pack "_sq_*")
     case res of
-      Left _ -> return ()
+      Left _   -> return ()
       Right xs -> mapM_ (processSampler n f) xs
 
 
@@ -209,21 +210,21 @@ putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
 
 -------------------------------------------------------------------------------
 -- | Pop all keys in a redis List
-popLAll :: Serialize a => B.ByteString -> Redis [a]
+popLAll :: (Serialize a, SC.SafeCopy a) => B.ByteString -> Redis [a]
 popLAll k = do
   res <- popLMany k 100
   case res of
     [] -> return res
-    _ -> (res ++ ) `liftM` popLAll k
+    _  -> (res ++ ) `liftM` popLAll k
 
 
 -------------------------------------------------------------------------------
 -- | Pop up to N items from a queue. It will pop from left and preserve order.
-popLMany :: Serialize a => B.ByteString -> Int -> Redis [a]
+popLMany :: (Serialize a, SC.SafeCopy a) => B.ByteString -> Int -> Redis [a]
 popLMany k n = do
     res <- replicateM n pop
     case sequence res of
-      Left _ -> return []
+      Left _   -> return []
       Right xs -> return $ mapMaybe conv $ catMaybes xs
     where
       pop = R.lpop k

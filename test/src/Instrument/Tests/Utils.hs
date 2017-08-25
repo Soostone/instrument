@@ -11,6 +11,7 @@ import           Control.Monad
 import qualified Data.ByteString       as B
 import           Data.IORef
 import qualified Data.Map              as M
+import           Data.SafeCopy
 import           Data.Serialize
 import           Path
 import qualified Path.IO               as PIO
@@ -50,7 +51,7 @@ encodeDecodeTests = testGroup "encodeCompress/decodeCompress"
     payload = Samples [1.2, 2.3, 4.5]
     submissionPacket = SP 3.4 "example.org" "metric" payload
     aggregated = Aggregated 3.4 "metric" "grp" (AggStats stats)
-    testDecode :: forall a b. (Serialize a, Eq a, Show a) => Path b File -> a -> Assertion
+    testDecode :: forall a b. (Serialize a, SafeCopy a, Eq a, Show a) => Path b File -> a -> Assertion
     testDecode fp v = do
       exists <- PIO.doesFileExist fp
       unless exists $ do

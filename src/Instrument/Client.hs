@@ -16,6 +16,7 @@ import qualified Data.ByteString.Char8  as B
 import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
 import qualified Data.Map               as M
+import qualified Data.SafeCopy          as SC
 import           Data.Serialize
 import           Database.Redis         as R hiding (HostName, time)
 import           Network.HostName
@@ -89,7 +90,7 @@ submitCounters hn cs r cfg = do
 
 
 -------------------------------------------------------------------------------
-submitPacket :: Serialize a => R.Connection -> String -> Maybe Integer -> a -> IO ()
+submitPacket :: (Serialize a, SC.SafeCopy a) => R.Connection -> String -> Maybe Integer -> a -> IO ()
 submitPacket r m mbound sp = void $ R.runRedis r push
     where rk = B.concat [B.pack "_sq_", B.pack m]
           push = case mbound of

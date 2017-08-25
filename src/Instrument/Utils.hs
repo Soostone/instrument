@@ -18,6 +18,7 @@ module Instrument.Utils
 
 -------------------------------------------------------------------------------
 import           Codec.Compression.GZip
+import           Control.Applicative    ((<|>))
 import           Control.Concurrent     (threadDelay)
 import           Control.Exception      (SomeException)
 import           Control.Monad
@@ -26,6 +27,7 @@ import           Control.Retry
 import qualified Data.ByteString.Char8  as B
 import           Data.ByteString.Lazy   (fromStrict, toStrict)
 import qualified Data.Map               as M
+import qualified Data.SafeCopy          as SC
 import           Data.Serialize
 import           Data.Text              (Text)
 import qualified Data.Text              as T
@@ -88,14 +90,20 @@ addThousands t = T.concat [n', dec]
 
 
 -------------------------------------------------------------------------------
--- | Serialize and compress with GZip in that order
-encodeCompress :: Serialize a => a -> B.ByteString
-encodeCompress = toStrict . compress . encodeLazy
+-- | Serialize and compress with GZip in that order. This is the only
+-- function we use for serializing to Redis.
+encodeCompress :: SC.SafeCopy a => a -> B.ByteString
+encodeCompress = toStrict . compress . runPutLazy . SC.safePut
 
 -------------------------------------------------------------------------------
--- | Decompress from GZip and deserialize in that order
-decodeCompress :: Serialize a => B.ByteString -> Either String a
-decodeCompress = decodeLazy . decompress . fromStrict
+-- | Decompress from GZip and deserialize in that order. Tries to
+-- decode SafeCopy first and falls back to Serialize if that fails to
+-- account for old data. Note that encodeCompress only serializes to
+-- SafeCopy so writes will be updated.
+decodeCompress :: (SC.SafeCopy a, Serialize a) => B.ByteString -> Either String a
+decodeCompress = decodeWithFallback . decompress . fromStrict
+  where
+    decodeWithFallback lbs = runGetLazy SC.safeGet lbs <|> decodeLazy lbs
 
 
 -------------------------------------------------------------------------------
