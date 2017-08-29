@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Instrument.Tests.Types
-    ( typesTests
+    ( tests
     ) where
 
 
@@ -17,8 +17,8 @@ import           Instrument.Types
 
 --TODO: test parse of .serialize files
 
-typesTests :: TestTree
-typesTests = testGroup "Instrument.Types"
+tests :: TestTree
+tests = testGroup "Instrument.Types"
   [ testCase "Stats SafeCopy" $
       testSafeCopy FailMissingFiles $(mkRelFile "test/data/Instrument/Types/Stats.safecopy") stats
   , testCase "Payload SafeCopy" $

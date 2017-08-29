@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 module Instrument.Tests.Client
-    ( clientTests
+    ( tests
     ) where
 
 -------------------------------------------------------------------------------
@@ -18,8 +18,8 @@ import           Instrument.Types
 import           Instrument.Worker
 -------------------------------------------------------------------------------
 
-clientTests :: TestTree
-clientTests = testGroup "Instrument.Client"
+tests :: TestTree
+tests = testGroup "Instrument.Client"
     [ withRedisCleanup $ testCase "queue bounding works" . queue_bounding_test
     ]
 

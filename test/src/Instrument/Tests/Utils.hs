@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Instrument.Tests.Utils
-    ( utilsTests
+    ( tests
     ) where
 
 -------------------------------------------------------------------------------
@@ -26,8 +26,8 @@ import           Instrument.Utils
 
 
 
-utilsTests :: TestTree
-utilsTests = testGroup "Instrument.Utils"
+tests :: TestTree
+tests = testGroup "Instrument.Utils"
     [ encodeDecodeTests
     , withResource spawnWorker killWorker $ testCase "indefinitely retries" . indefinitely_retry
     ]

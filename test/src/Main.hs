@@ -1,16 +1,16 @@
 module Main (main) where
 
 -------------------------------------------------------------------------------
-import Test.Tasty
+import           Test.Tasty
 -------------------------------------------------------------------------------
-import Instrument.Tests.Client (clientTests)
-import Instrument.Tests.Types (typesTests)
-import Instrument.Tests.Utils (utilsTests)
+import qualified Instrument.Tests.Client
+import qualified Instrument.Tests.Types
+import qualified Instrument.Tests.Utils
 -------------------------------------------------------------------------------
 
 main :: IO ()
 main = defaultMain $ testGroup "tests"
-    [ utilsTests
-    , clientTests
-    , typesTests
+    [ Instrument.Tests.Utils.tests
+    , Instrument.Tests.Client.tests
+    , Instrument.Tests.Types.tests
     ]
