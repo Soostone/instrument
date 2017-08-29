@@ -1,7 +1,9 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
 
 module Instrument.Types
   ( createInstrumentPool
@@ -10,6 +12,10 @@ module Instrument.Types
   , Instrument(..)
   , InstrumentConfig(..)
   , SubmissionPacket(..)
+  , MetricName(..)
+  , DimensionName(..)
+  , DimensionValue(..)
+  , Dimensions
   , Payload(..)
   , Aggregated(..)
   , AggPayload(..)
@@ -19,6 +25,7 @@ module Instrument.Types
   ) where
 
 -------------------------------------------------------------------------------
+import           Control.Applicative   as A
 import qualified Data.ByteString.Char8 as B
 import           Data.CSV.Conduit
 import           Data.Default
@@ -26,6 +33,8 @@ import           Data.IORef
 import qualified Data.Map              as M
 import qualified Data.SafeCopy         as SC
 import           Data.Serialize
+import           Data.Serialize.Text   ()
+import           Data.String
 import           Data.Text             (Text)
 import qualified Data.Text             as T
 import           Data.Text.Encoding
@@ -49,10 +58,18 @@ createInstrumentPool ci = do
 
 
 -- Map of user-defined samplers.
-type Samplers = M.Map String S.Sampler
+type Samplers = M.Map (MetricName, Dimensions) S.Sampler
 
 -- Map of user-defined counters.
-type Counters = M.Map String C.Counter
+type Counters = M.Map (MetricName, Dimensions) C.Counter
+
+
+type Dimensions = M.Map DimensionName DimensionValue
+
+
+newtype MetricName = MetricName {
+      metricName :: String
+    } deriving (Eq,Show,Generic,Ord,IsString,Serialize)
 
 
 data Instrument = I {
@@ -71,18 +88,67 @@ instance Default InstrumentConfig where
 
 
 -- | Submitted package of collected samples
-data SubmissionPacket = SP {
-      spTimeStamp :: !Double
+data SubmissionPacket_v0 = SP_v0 {
+      spTimeStamp_v0 :: !Double
     -- ^ Timing of this submission
-    , spHostName  :: !HostName
+    , spHostName_v0  :: !HostName
     -- ^ Who sent it
-    , spName      :: String
+    , spName_v0      :: String
     -- ^ Metric name
-    , spPayload   :: Payload
+    , spPayload_v0   :: Payload
     -- ^ Collected values
     } deriving (Eq,Show,Generic)
 
-instance Serialize SubmissionPacket
+
+instance Serialize SubmissionPacket_v0
+
+
+data SubmissionPacket = SP {
+      spTimeStamp  :: !Double
+    -- ^ Timing of this submission
+    , spHostName   :: !HostName
+    -- ^ Who sent it. Note that on the backend this is converted to a
+    -- dimension.
+    , spName       :: !MetricName
+    -- ^ Metric name
+    , spPayload    :: !Payload
+    -- ^ Collected values
+    , spDimensions :: !Dimensions
+    -- ^ Defines slices that this packet belongs to. This allows
+    -- drill-down on the backends. For instance, you could do
+    -- "server_name" "app1" or "queue_name" "my_queue"
+    } deriving (Eq,Show,Generic)
+
+
+instance Serialize SubmissionPacket where
+  get = (to <$> gGet) <|> (upgradeSP0 <$> get)
+
+
+instance SC.Migrate SubmissionPacket where
+  type MigrateFrom SubmissionPacket = SubmissionPacket_v0
+  migrate = upgradeSP0
+
+
+upgradeSP0 :: SubmissionPacket_v0 -> SubmissionPacket
+upgradeSP0 SP_v0 {..} = SP
+  { spTimeStamp = spTimeStamp_v0
+  , spHostName = spHostName_v0
+  , spName = MetricName spName_v0
+  , spPayload = spPayload_v0
+  , spDimensions = mempty
+  }
+
+
+-------------------------------------------------------------------------------
+newtype DimensionName = DimensionName {
+    dimensionName :: Text
+  } deriving (Eq,Ord,Show,Generic,Serialize)
+
+
+-------------------------------------------------------------------------------
+newtype DimensionValue = DimensionValue {
+    dimensionValue :: Text
+  } deriving (Eq,Ord,Show,Generic,Serialize)
 
 
 -------------------------------------------------------------------------------
@@ -95,10 +161,24 @@ instance Serialize Payload
 
 
 -------------------------------------------------------------------------------
+data Aggregated_v0 = Aggregated_v0 {
+      aggTS_v0      :: Double
+      -- ^ Timestamp for this aggregation
+    , aggName_v0    :: String
+    -- ^ Name of the metric
+    , aggGroup_v0   :: B.ByteString
+    -- ^ The aggregation level/group for this stat
+    , aggPayload_v0 :: AggPayload
+    -- ^ Calculated stats for the metric
+    } deriving (Eq,Show, Generic)
+
+instance Serialize Aggregated
+
+
 data Aggregated = Aggregated {
       aggTS      :: Double
       -- ^ Timestamp for this aggregation
-    , aggName    :: String
+    , aggName    :: MetricName
     -- ^ Name of the metric
     , aggGroup   :: B.ByteString
     -- ^ The aggregation level/group for this stat
@@ -106,7 +186,15 @@ data Aggregated = Aggregated {
     -- ^ Calculated stats for the metric
     } deriving (Eq,Show, Generic)
 
-instance Serialize Aggregated
+
+instance SC.Migrate Aggregated where
+  type MigrateFrom Aggregated = Aggregated_v0
+  migrate Aggregated_v0 {..} = Aggregated
+    { aggTS = aggTS_v0
+    , aggName = MetricName aggName_v0
+    , aggGroup = aggGroup_v0
+    , aggPayload = aggPayload_v0
+    }
 
 
 -- | Resulting payload for metrics aggregation
@@ -159,7 +247,7 @@ aggToCSV agg@Aggregated{..} = M.union els defFields
   where
     els :: MapRow Text
     els = M.fromList $
-            ("metric", T.pack aggName) :
+            ("metric", T.pack (metricName aggName)) :
             ("group", decodeUtf8 aggGroup ) :
             ("timestamp", ts) :
             fields
@@ -194,7 +282,12 @@ instance Serialize Stats
 
 
 $(SC.deriveSafeCopy 0 'SC.base ''Payload)
-$(SC.deriveSafeCopy 0 'SC.base ''SubmissionPacket)
+$(SC.deriveSafeCopy 0 'SC.base ''SubmissionPacket_v0)
+$(SC.deriveSafeCopy 1 'SC.extension ''SubmissionPacket)
 $(SC.deriveSafeCopy 0 'SC.base ''AggPayload)
-$(SC.deriveSafeCopy 0 'SC.base ''Aggregated)
+$(SC.deriveSafeCopy 0 'SC.base ''Aggregated_v0)
+$(SC.deriveSafeCopy 1 'SC.extension ''Aggregated)
 $(SC.deriveSafeCopy 0 'SC.base ''Stats)
+$(SC.deriveSafeCopy 0 'SC.base ''DimensionName)
+$(SC.deriveSafeCopy 0 'SC.base ''DimensionValue)
+$(SC.deriveSafeCopy 0 'SC.base ''MetricName)

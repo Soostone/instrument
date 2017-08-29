@@ -103,7 +103,7 @@ encodeCompress = toStrict . compress . runPutLazy . SC.safePut
 decodeCompress :: (SC.SafeCopy a, Serialize a) => B.ByteString -> Either String a
 decodeCompress = decodeWithFallback . decompress . fromStrict
   where
-    decodeWithFallback lbs = runGetLazy SC.safeGet lbs <|> decodeLazy lbs
+    decodeWithFallback lbs = runGetLazy SC.safeGet lbs <|> (decodeLazy lbs)
 
 
 -------------------------------------------------------------------------------

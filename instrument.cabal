@@ -47,6 +47,7 @@ library
     , vector
     , containers
     , cereal
+    , cereal-text
     , data-default
     , csv-conduit
     , unix

@@ -201,7 +201,7 @@ putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
       mkLine (m, val) = T.concat
           [ "inst."
           , typePrefix (aggPayload agg), "."
-          ,  T.pack (aggName agg), "."
+          ,  T.pack (metricName (aggName agg)), "."
           , m, "."
           , T.decodeUtf8 $ aggGroup agg, " "
           , val, " "

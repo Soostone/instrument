@@ -33,6 +33,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 -------------------------------------------------------------------------------
 import qualified Instrument.Client      as I
+import           Instrument.Types
 -------------------------------------------------------------------------------
 
 
@@ -45,28 +46,30 @@ instance (Monad m) => HasInstrument (ReaderT I.Instrument m) where
 
 -- | Run a monadic action while measuring its runtime
 timeI :: (MonadIO m, HasInstrument m)
-     => String
+     => MetricName
+     -> Dimensions
      -> m a
      -> m a
-timeI name act = do
+timeI name dims act = do
   i <- getInstrument
-  I.timeI name i act
+  I.timeI name dims i act
 
 
 -- | Record a measurement sample
 sampleI :: (MonadIO m, HasInstrument m )
-       => String
+       => MetricName
+       -> Dimensions
        -> Double
        -> m ()
-sampleI name val = I.sampleI name val =<< getInstrument
+sampleI name dims val = I.sampleI name dims val =<< getInstrument
 
 
 -------------------------------------------------------------------------------
-incrementI :: (MonadIO m, HasInstrument m) => String -> m ()
-incrementI m = I.incrementI m =<< getInstrument
+incrementI :: (MonadIO m, HasInstrument m) => MetricName -> Dimensions -> m ()
+incrementI m dims = I.incrementI m dims =<< getInstrument
 
 
 -------------------------------------------------------------------------------
-countI :: (MonadIO m, HasInstrument m) => String -> Int -> m ()
-countI m v = I.countI m v =<< getInstrument
+countI :: (MonadIO m, HasInstrument m) => MetricName -> Dimensions -> Int -> m ()
+countI m dims v = I.countI m dims v =<< getInstrument
 

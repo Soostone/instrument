@@ -9,6 +9,7 @@ import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Default
+import qualified Data.Map               as M
 import           Database.Redis
 import           Test.Tasty
 import           Test.Tasty.HUnit
@@ -28,10 +29,10 @@ queue_bounding_test mkConn = do
     conn <- mkConn
     instr <- initInstrument redisCI icfg
     agg <- newEmptyMVar
-    replicateM_ 2 (sampleI key 1 instr >> sleepFlush)
+    replicateM_ 2 (sampleI key dims 1 instr >> sleepFlush)
     -- redis queue slots now full of the above aggregate
     -- bounds will drop these
-    sampleI key 100 instr
+    sampleI key dims 100 instr
     sleepFlush
     void $ forkIO $ work conn 1 (liftIO . putMVar agg)
     Aggregated { aggPayload = AggStats Stats {..} } <- takeMVar agg
@@ -54,5 +55,8 @@ redisCI = defaultConnectInfo
 icfg :: InstrumentConfig
 icfg = def { redisQueueBound = Just 2 }
 
-key :: String
-key = "instrument-test"
+key :: MetricName
+key = MetricName "instrument-test"
+
+dims :: Dimensions
+dims = M.fromList [(DimensionName "server", DimensionValue "app1")]
