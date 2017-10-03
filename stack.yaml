@@ -1,7 +1,9 @@
 resolver: lts-9.1
 packages:
   - '.'
-  - location: deps/safecopy-hunit
+  - location:
+      git: https://github.com/Soostone/safecopy-hunit.git
+      commit: c573e756a2057034c9b33b0509af15fa54eeb246
     extra-dep: true
 extra-deps:
   - path-0.6.1
