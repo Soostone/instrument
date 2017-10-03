@@ -22,6 +22,7 @@ module Instrument.Types
   , mkStatsFields
   , aggToCSV
   , Stats(..)
+  , hostDimension
   ) where
 
 -------------------------------------------------------------------------------
@@ -31,13 +32,13 @@ import           Data.CSV.Conduit
 import           Data.Default
 import           Data.IORef
 import qualified Data.Map              as M
+import           Data.Monoid
 import qualified Data.SafeCopy         as SC
 import           Data.Serialize
 import           Data.Serialize.Text   ()
 import           Data.String
 import           Data.Text             (Text)
 import qualified Data.Text             as T
-import           Data.Text.Encoding
 import           Database.Redis        as H hiding (HostName, get)
 import           GHC.Generics
 import           Network.HostName
@@ -106,9 +107,6 @@ instance Serialize SubmissionPacket_v0
 data SubmissionPacket = SP {
       spTimeStamp  :: !Double
     -- ^ Timing of this submission
-    , spHostName   :: !HostName
-    -- ^ Who sent it. Note that on the backend this is converted to a
-    -- dimension.
     , spName       :: !MetricName
     -- ^ Metric name
     , spPayload    :: !Payload
@@ -132,23 +130,29 @@ instance SC.Migrate SubmissionPacket where
 upgradeSP0 :: SubmissionPacket_v0 -> SubmissionPacket
 upgradeSP0 SP_v0 {..} = SP
   { spTimeStamp = spTimeStamp_v0
-  , spHostName = spHostName_v0
   , spName = MetricName spName_v0
   , spPayload = spPayload_v0
-  , spDimensions = mempty
+  , spDimensions = M.singleton hostDimension (DimensionValue (T.pack spHostName_v0))
   }
+
+
+-------------------------------------------------------------------------------
+-- | Convention for the dimension of the hostname. Used in the client
+-- to inject hostname into the parameters map
+hostDimension :: DimensionName
+hostDimension = "host"
 
 
 -------------------------------------------------------------------------------
 newtype DimensionName = DimensionName {
     dimensionName :: Text
-  } deriving (Eq,Ord,Show,Generic,Serialize)
+  } deriving (Eq,Ord,Show,Generic,Serialize,IsString)
 
 
 -------------------------------------------------------------------------------
 newtype DimensionValue = DimensionValue {
     dimensionValue :: Text
-  } deriving (Eq,Ord,Show,Generic,Serialize)
+  } deriving (Eq,Ord,Show,Generic,Serialize,IsString)
 
 
 -------------------------------------------------------------------------------
@@ -170,31 +174,68 @@ data Aggregated_v0 = Aggregated_v0 {
     -- ^ The aggregation level/group for this stat
     , aggPayload_v0 :: AggPayload
     -- ^ Calculated stats for the metric
-    } deriving (Eq,Show, Generic)
+    } deriving (Eq,Show,Generic)
 
-instance Serialize Aggregated
+
+instance Serialize Aggregated_v0
+
+
+data Aggregated_v1 = Aggregated_v1 {
+      aggTS_v1      :: Double
+      -- ^ Timestamp for this aggregation
+    , aggName_v1    :: MetricName
+    -- ^ Name of the metric
+    , aggGroup_v1   :: B.ByteString
+    -- ^ The aggregation level/group for this stat
+    , aggPayload_v1 :: AggPayload
+    -- ^ Calculated stats for the metric
+    } deriving (Eq,Show,Generic)
+
+
+instance SC.Migrate Aggregated_v1 where
+  type MigrateFrom Aggregated_v1 = Aggregated_v0
+  migrate = upgradeAggregated_v0
+
+
+upgradeAggregated_v0 :: Aggregated_v0 -> Aggregated_v1
+upgradeAggregated_v0 a = Aggregated_v1
+  { aggTS_v1 = aggTS_v0 a
+  , aggName_v1 = MetricName (aggName_v0 a)
+  , aggGroup_v1 = (aggGroup_v0 a)
+  , aggPayload_v1 = (aggPayload_v0 a)
+  }
+
+instance Serialize Aggregated_v1 where
+  get = (to <$> gGet) <|> (upgradeAggregated_v0 <$> get)
 
 
 data Aggregated = Aggregated {
-      aggTS      :: Double
+      aggTS         :: Double
       -- ^ Timestamp for this aggregation
-    , aggName    :: MetricName
+    , aggName       :: MetricName
     -- ^ Name of the metric
-    , aggGroup   :: B.ByteString
-    -- ^ The aggregation level/group for this stat
-    , aggPayload :: AggPayload
+    , aggPayload    :: AggPayload
     -- ^ Calculated stats for the metric
+    , aggDimensions :: Dimensions
     } deriving (Eq,Show, Generic)
 
 
+upgradeAggregated_v1 :: Aggregated_v1 -> Aggregated
+upgradeAggregated_v1 a = Aggregated
+  { aggTS = aggTS_v1 a
+  , aggName = aggName_v1 a
+  , aggPayload = aggPayload_v1 a
+  , aggDimensions = mempty
+  }
+
+
 instance SC.Migrate Aggregated where
-  type MigrateFrom Aggregated = Aggregated_v0
-  migrate Aggregated_v0 {..} = Aggregated
-    { aggTS = aggTS_v0
-    , aggName = MetricName aggName_v0
-    , aggGroup = aggGroup_v0
-    , aggPayload = aggPayload_v0
-    }
+  type MigrateFrom Aggregated = Aggregated_v1
+  migrate = upgradeAggregated_v1
+
+
+instance Serialize Aggregated where
+  get = (to <$> gGet) <|> (upgradeAggregated_v1 <$> get)
 
 
 -- | Resulting payload for metrics aggregation
@@ -212,7 +253,7 @@ instance Default AggPayload where
     def = AggStats def
 
 instance Default Aggregated where
-    def = Aggregated 0 "" "" def
+    def = Aggregated 0 "" def mempty
 
 
 -------------------------------------------------------------------------------
@@ -243,17 +284,16 @@ mkStatsFields Aggregated{..}  = (els, ts)
 -------------------------------------------------------------------------------
 -- | Expand count aggregation to have the full columns
 aggToCSV :: Aggregated -> M.Map Text Text
-aggToCSV agg@Aggregated{..} = M.union els defFields
+aggToCSV agg@Aggregated{..} = els <> defFields <> dimFields
   where
     els :: MapRow Text
     els = M.fromList $
             ("metric", T.pack (metricName aggName)) :
-            ("group", decodeUtf8 aggGroup ) :
             ("timestamp", ts) :
             fields
     (fields, ts) = mkStatsFields agg
     defFields = M.fromList $ fst $ mkStatsFields $ agg { aggPayload =  (AggStats def) }
-
+    dimFields = M.fromList [(k,v) | (DimensionName k, DimensionValue v) <- M.toList aggDimensions]
 
 
 -------------------------------------------------------------------------------
@@ -286,7 +326,8 @@ $(SC.deriveSafeCopy 0 'SC.base ''SubmissionPacket_v0)
 $(SC.deriveSafeCopy 1 'SC.extension ''SubmissionPacket)
 $(SC.deriveSafeCopy 0 'SC.base ''AggPayload)
 $(SC.deriveSafeCopy 0 'SC.base ''Aggregated_v0)
-$(SC.deriveSafeCopy 1 'SC.extension ''Aggregated)
+$(SC.deriveSafeCopy 1 'SC.extension ''Aggregated_v1)
+$(SC.deriveSafeCopy 2 'SC.extension ''Aggregated)
 $(SC.deriveSafeCopy 0 'SC.base ''Stats)
 $(SC.deriveSafeCopy 0 'SC.base ''DimensionName)
 $(SC.deriveSafeCopy 0 'SC.base ''DimensionValue)

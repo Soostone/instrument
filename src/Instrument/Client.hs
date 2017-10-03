@@ -17,6 +17,7 @@ import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
 import qualified Data.Map               as M
 import qualified Data.SafeCopy          as SC
+import qualified Data.Text              as T
 import           Database.Redis         as R hiding (HostName, time)
 import           Network.HostName
 -------------------------------------------------------------------------------
@@ -58,7 +59,12 @@ mkSampledSubmission :: HostName
                     -> IO SubmissionPacket
 mkSampledSubmission host nm dims vals = do
   ts <- TM.getTime
-  return $ SP ts host nm (Samples vals) dims
+  return $ SP ts nm (Samples vals) (addHostDimension host dims)
+
+
+-------------------------------------------------------------------------------
+addHostDimension :: HostName -> Dimensions -> Dimensions
+addHostDimension host = M.insert hostDimension (DimensionValue (T.pack host))
 
 
 -------------------------------------------------------------------------------
@@ -69,7 +75,7 @@ mkCounterSubmission :: HostName
                     -> IO SubmissionPacket
 mkCounterSubmission hn m dims i = do
     ts <- TM.getTime
-    return $ SP ts hn m (Counter i) dims
+    return $ SP ts m (Counter i) (addHostDimension hn dims)
 
 
 -- | Flush all samplers in Instrument

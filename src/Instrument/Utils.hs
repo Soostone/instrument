@@ -13,6 +13,7 @@ module Instrument.Utils
     , indefinitely
     , seconds
     , milliseconds
+    , for
     ) where
 
 
@@ -104,7 +105,7 @@ encodeCompress = toStrict . compress . runPutLazy . SC.safePut
 decodeCompress :: (SC.SafeCopy a, Serialize a) => B.ByteString -> Either String a
 decodeCompress = decodeWithFallback . decompress . fromStrict
   where
-    decodeWithFallback lbs = runGetLazy SC.safeGet lbs <|> (decodeLazy lbs)
+    decodeWithFallback lbs = runGetLazy SC.safeGet lbs <|> decodeLazy lbs
 
 
 -------------------------------------------------------------------------------
@@ -140,3 +141,8 @@ seconds = (* milliseconds 1000)
 -- | Convert milliseconds to microseconds
 milliseconds :: Int -> Int
 milliseconds = (* 1000)
+
+
+-------------------------------------------------------------------------------
+for :: (Functor f) => f a -> (a -> b) -> f b
+for = flip fmap

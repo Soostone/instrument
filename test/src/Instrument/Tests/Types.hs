@@ -31,5 +31,5 @@ tests = testGroup "Instrument.Types"
   where
     stats = Stats 1 2 3 4 5 6 7 8 9 (M.singleton 10 11)
     payload = Samples [1.2, 2.3, 4.5]
-    submissionPacket = SP 3.4 "example.org" "metric" payload mempty
-    aggregated = Aggregated 3.4 "metric" "grp" (AggStats stats)
+    submissionPacket = SP 3.4 "metric" payload (M.singleton hostDimension "example.org")
+    aggregated = Aggregated 3.4 "metric" (AggStats stats) mempty

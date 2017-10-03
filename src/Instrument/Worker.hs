@@ -21,7 +21,6 @@ import qualified Data.Map               as M
 import qualified Data.SafeCopy          as SC
 import           Data.Serialize
 import qualified Data.Text              as T
-import qualified Data.Text.Encoding     as T
 import qualified Data.Text.IO           as T
 import qualified Data.Vector.Unboxed    as V
 import           Database.Redis         as R hiding (decode)
@@ -155,7 +154,8 @@ processSampler n f k = do
     [] -> return ()
     _ -> do
       let nm = spName . head $ packets
-          byHost = collect packets spHostName id
+          byDims :: M.Map Dimensions [SubmissionPacket]
+          byDims = collect packets spDimensions id
           mkAgg xs =
               case spPayload $ head xs of
                 Samples _ -> AggStats . mkStats . V.fromList .
@@ -165,10 +165,8 @@ processSampler n f k = do
                              map (unCounter . spPayload) $
                              xs
       t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
-      let agg = Aggregated t nm "all" $ mkAgg packets
-          aggs = map mkHostAgg $ M.toList byHost
-          mkHostAgg (hn, ps) = Aggregated t nm (T.encodeUtf8 $ T.concat ["hosts.", noDots $ T.pack hn]) $ mkAgg ps
-      f agg
+      let aggs = map mkDimsAgg $ M.toList byDims
+          mkDimsAgg (dims, ps) = Aggregated t nm (mkAgg ps) dims
       mapM_ f aggs
       return ()
 
@@ -195,15 +193,17 @@ typePrefix AggCount{} = "counts"
 -------------------------------------------------------------------------------
 -- | Push data into a Graphite database using the plaintext protocol
 putAggregateGraphite :: Handle -> AggProcess
-putAggregateGraphite h agg = liftIO $ mapM_ (T.hPutStrLn h . mkLine) ss
+putAggregateGraphite h agg = liftIO $ mapM_ (mapM_ (T.hPutStrLn h) . mkLines) ss
     where
       (ss, ts) = mkStatsFields agg
-      mkLine (m, val) = T.concat
+      -- Expand dimensions into one datum per dimension pair as the group
+      mkLines (m, val) = for (M.toList (aggDimensions agg)) $ \(DimensionName dimName, DimensionValue dimVal) -> T.concat
           [ "inst."
           , typePrefix (aggPayload agg), "."
           ,  T.pack (metricName (aggName agg)), "."
           , m, "."
-          , T.decodeUtf8 $ aggGroup agg, " "
+          , dimName, "."
+          , dimVal, " "
           , val, " "
           , ts ]
 
