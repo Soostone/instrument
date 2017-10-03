@@ -17,7 +17,6 @@ import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
 import qualified Data.Map               as M
 import qualified Data.SafeCopy          as SC
-import           Data.Serialize
 import           Database.Redis         as R hiding (HostName, time)
 import           Network.HostName
 -------------------------------------------------------------------------------
@@ -98,7 +97,7 @@ submitCounters hn cs r cfg = do
 
 
 -------------------------------------------------------------------------------
-submitPacket :: (Serialize a, SC.SafeCopy a) => R.Connection -> MetricName -> Maybe Integer -> a -> IO ()
+submitPacket :: (SC.SafeCopy a) => R.Connection -> MetricName -> Maybe Integer -> a -> IO ()
 submitPacket r m mbound sp = void $ R.runRedis r push
     where rk = B.concat [B.pack "_sq_", B.pack (metricName m)]
           push = case mbound of

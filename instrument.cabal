@@ -66,6 +66,10 @@ test-suite test
   ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -O0
   hs-source-dirs:
     test/src
+  other-modules:
+    Instrument.Tests.Client
+    Instrument.Tests.Types
+    Instrument.Tests.Utils
   build-depends:
      base
    , data-default

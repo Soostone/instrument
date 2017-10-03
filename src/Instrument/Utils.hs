@@ -27,6 +27,7 @@ import           Control.Retry
 import qualified Data.ByteString.Char8  as B
 import           Data.ByteString.Lazy   (fromStrict, toStrict)
 import qualified Data.Map               as M
+import qualified Data.Map.Strict        as MS
 import qualified Data.SafeCopy          as SC
 import           Data.Serialize
 import           Data.Text              (Text)
@@ -45,7 +46,7 @@ collect :: (Ord b)
         -> M.Map b [c]
 collect as mkKey mkVal = foldr step M.empty as
     where
-      step x acc = M.insertWith' (++) (mkKey x) ([mkVal x]) acc
+      step x acc = MS.insertWith (++) (mkKey x) ([mkVal x]) acc
 
 
 -------------------------------------------------------------------------------
