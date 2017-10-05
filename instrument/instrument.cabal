@@ -70,6 +70,8 @@ test-suite test
     Instrument.Tests.Client
     Instrument.Tests.Types
     Instrument.Tests.Utils
+    Instrument.Tests.Arbitrary
+    Instrument.Tests.Worker
   build-depends:
      base
    , data-default
@@ -88,3 +90,4 @@ test-suite test
    , cereal
    , bytestring
    , safecopy
+   , quickcheck-instances

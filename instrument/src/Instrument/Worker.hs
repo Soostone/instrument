@@ -1,5 +1,6 @@
-{-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Instrument.Worker
     ( initWorkerCSV
     , initWorkerCSV'
@@ -8,6 +9,8 @@ module Instrument.Worker
     , work
     , initWorker
     , AggProcess
+    -- * Exported for testing
+    , expandDims
     ) where
 
 -------------------------------------------------------------------------------
@@ -18,8 +21,10 @@ import qualified Data.ByteString.Char8  as B
 import           Data.CSV.Conduit
 import           Data.Default
 import qualified Data.Map               as M
+import           Data.Monoid
 import qualified Data.SafeCopy          as SC
 import           Data.Serialize
+import qualified Data.Set               as Set
 import qualified Data.Text              as T
 import qualified Data.Text.IO           as T
 import qualified Data.Vector.Unboxed    as V
@@ -165,11 +170,54 @@ processSampler n f k = do
                              map (unCounter . spPayload) $
                              xs
       t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
-      let aggs = map mkDimsAgg $ M.toList byDims
+      let aggs = map mkDimsAgg $ M.toList $ expandDims $ byDims
           mkDimsAgg (dims, ps) = Aggregated t nm (mkAgg ps) dims
       mapM_ f aggs
       return ()
 
+
+-------------------------------------------------------------------------------
+-- | Take a map of packets by dimensions and *add* aggregations of the
+-- existing dims that isolate each distinct dimension/dimensionvalue
+-- pair + one more entry with an empty dimension set that aggregates
+-- the whole thing.
+-- worked example:
+--
+-- Given:
+-- { {d1=>d1v1,d2=>d2v1} => p1
+-- , {d1=>d1v1,d2=>d2v2} => p2
+-- }
+-- Produces:
+-- { {d1=>d1v1,d2=>d2v1} => p1
+-- , {d1=>d1v1,d2=>d2v2} => p2
+-- , {d1=>d1v1} => p1 + p2
+-- , {d2=>d2v1} => p1
+-- , {d2=>d2v2} => p2
+-- , {} => p1 + p2
+-- }
+expandDims
+  :: forall packets. (Monoid packets, Eq packets)
+  => M.Map Dimensions packets
+  -> M.Map Dimensions packets
+expandDims m =
+  -- left-biased so technically if we have anything occupying the aggregated spots, leave them be
+  m <> additions <> fullAggregation
+  where
+    distinctPairs :: Set.Set (DimensionName, DimensionValue)
+    distinctPairs = Set.fromList (mconcat (M.toList <$> M.keys m))
+    additions = foldMap mkIsolatedMap distinctPairs
+    mkIsolatedMap :: (DimensionName, DimensionValue) -> M.Map Dimensions packets
+    mkIsolatedMap dPair =
+      let matches = snd <$> filter ((== dPair) . fst) mFlat
+      in if matches == mempty
+            then mempty
+            else M.singleton (uncurry M.singleton dPair) (mconcat matches)
+    mFlat :: [((DimensionName, DimensionValue), packets)]
+    mFlat = [ ((dn, dv), packets)
+            | (dimensionsMap, packets) <- M.toList m
+            , (dn, dv) <- M.toList dimensionsMap]
+    -- All packets across any combination of dimensions
+    fullAggregation = M.singleton mempty (mconcat (M.elems m))
 
 
 -- | A function that does something with the aggregation results. Can
