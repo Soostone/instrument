@@ -23,6 +23,7 @@ module Instrument.Types
   , aggToCSV
   , Stats(..)
   , hostDimension
+  , HostDimensionPolicy(..)
   ) where
 
 -------------------------------------------------------------------------------
@@ -141,6 +142,19 @@ upgradeSP0 SP_v0 {..} = SP
 -- to inject hostname into the parameters map
 hostDimension :: DimensionName
 hostDimension = "host"
+
+
+-------------------------------------------------------------------------------
+-- | Should we automatically pull the host and add it as a
+-- dimension. Used at the call site of the various metrics ('timeI',
+-- 'sampleI', etc). Hosts are basically grandfathered in as a
+-- dimension and the functionality of automatically injecting them is
+-- useful, but it is not relevant to some metrics and actually makes
+-- some metrics difficult to use depending on the backend, so we made
+-- them opt-in.
+data HostDimensionPolicy = AddHostDimension
+                         | DoNotAddHostDimension
+                         deriving (Show, Eq)
 
 
 -------------------------------------------------------------------------------

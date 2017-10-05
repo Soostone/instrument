@@ -29,10 +29,10 @@ queue_bounding_test mkConn = do
     conn <- mkConn
     instr <- initInstrument redisCI icfg
     agg <- newEmptyMVar
-    replicateM_ 2 (sampleI key dims 1 instr >> sleepFlush)
+    replicateM_ 2 (sampleI key DoNotAddHostDimension dims 1 instr >> sleepFlush)
     -- redis queue slots now full of the above aggregate
     -- bounds will drop these
-    sampleI key dims 100 instr
+    sampleI key DoNotAddHostDimension dims 100 instr
     sleepFlush
     void $ forkIO $ work conn 1 (liftIO . putMVar agg)
     Aggregated { aggPayload = AggStats Stats {..} } <- takeMVar agg

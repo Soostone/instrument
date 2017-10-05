@@ -47,29 +47,48 @@ instance (Monad m) => HasInstrument (ReaderT I.Instrument m) where
 -- | Run a monadic action while measuring its runtime
 timeI :: (MonadIO m, HasInstrument m)
      => MetricName
+     -> HostDimensionPolicy
      -> Dimensions
      -> m a
      -> m a
-timeI name dims act = do
+timeI name hostDimPolicy dims act = do
   i <- getInstrument
-  I.timeI name dims i act
+  I.timeI name hostDimPolicy dims i act
 
 
 -- | Record a measurement sample
 sampleI :: (MonadIO m, HasInstrument m )
        => MetricName
+       -> HostDimensionPolicy
        -> Dimensions
        -> Double
        -> m ()
-sampleI name dims val = I.sampleI name dims val =<< getInstrument
+sampleI name hostDimPolicy dims val =
+  I.sampleI name hostDimPolicy dims val =<< getInstrument
 
 
 -------------------------------------------------------------------------------
-incrementI :: (MonadIO m, HasInstrument m) => MetricName -> Dimensions -> m ()
-incrementI m dims = I.incrementI m dims =<< getInstrument
+incrementI
+  :: ( MonadIO m
+     , HasInstrument m
+     )
+  => MetricName
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> m ()
+incrementI m hostDimPolicy dims =
+  I.incrementI m hostDimPolicy dims =<< getInstrument
 
 
 -------------------------------------------------------------------------------
-countI :: (MonadIO m, HasInstrument m) => MetricName -> Dimensions -> Int -> m ()
-countI m dims v = I.countI m dims v =<< getInstrument
-
+countI
+  :: ( MonadIO m
+     , HasInstrument m
+     )
+  => MetricName
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> Int
+  -> m ()
+countI m hostDimPolicy dims v =
+  I.countI m hostDimPolicy dims v =<< getInstrument

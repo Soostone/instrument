@@ -45,21 +45,20 @@ initInstrument conn cfg = do
     h        <- getHostName
     smplrs <- newIORef M.empty
     ctrs <- newIORef M.empty
-    void $ forkIO $ indefinitely' $ submitSamplers h smplrs p cfg
-    void $ forkIO $ indefinitely' $ submitCounters h ctrs p cfg
+    void $ forkIO $ indefinitely' $ submitSamplers smplrs p cfg
+    void $ forkIO $ indefinitely' $ submitCounters ctrs p cfg
     return $ I h smplrs ctrs p
   where
     indefinitely' = indefinitely "Client" (seconds 1)
 
 -------------------------------------------------------------------------------
-mkSampledSubmission :: HostName
-                    -> MetricName
+mkSampledSubmission :: MetricName
                     -> Dimensions
                     -> [Double]
                     -> IO SubmissionPacket
-mkSampledSubmission host nm dims vals = do
+mkSampledSubmission nm dims vals = do
   ts <- TM.getTime
-  return $ SP ts nm (Samples vals) (addHostDimension host dims)
+  return $ SP ts nm (Samples vals) dims
 
 
 -------------------------------------------------------------------------------
@@ -68,38 +67,35 @@ addHostDimension host = M.insert hostDimension (DimensionValue (T.pack host))
 
 
 -------------------------------------------------------------------------------
-mkCounterSubmission :: HostName
-                    -> MetricName
+mkCounterSubmission :: MetricName
                     -> Dimensions
                     -> Int
                     -> IO SubmissionPacket
-mkCounterSubmission hn m dims i = do
+mkCounterSubmission m dims i = do
     ts <- TM.getTime
-    return $ SP ts m (Counter i) (addHostDimension hn dims)
+    return $ SP ts m (Counter i) dims
 
 
 -- | Flush all samplers in Instrument
 submitSamplers
-  :: HostName
-  -> IORef Samplers
+  :: IORef Samplers
   -> Connection
   -> InstrumentConfig
   -> IO ()
-submitSamplers hn smplrs rds cfg = do
+submitSamplers smplrs rds cfg = do
   ss <- getSamplers smplrs
-  mapM_ (flushSampler hn rds cfg) ss
+  mapM_ (flushSampler rds cfg) ss
 
 
 -- | Flush all samplers in Instrument
 submitCounters
-  :: HostName
-  -> IORef Counters
+  :: IORef Counters
   -> Connection
   -> InstrumentConfig
   -> IO ()
-submitCounters hn cs r cfg = do
+submitCounters cs r cfg = do
     ss <- M.toList `liftM` readIORef cs
-    mapM_ (flushCounter hn r cfg) ss
+    mapM_ (flushCounter r cfg) ss
 
 
 -------------------------------------------------------------------------------
@@ -115,58 +111,86 @@ submitPacket r m mbound sp = void $ R.runRedis r push
 -- | Flush given counter to remote service and reset in-memory counter
 -- back to 0.
 flushCounter
-  :: HostName
-  -> Connection
+  :: Connection
   -> InstrumentConfig
   -> ((MetricName, Dimensions), C.Counter)
   -> IO ()
-flushCounter hn r cfg ((m, dims), c) =
+flushCounter r cfg ((m, dims), c) =
     C.resetCounter c >>=
-    mkCounterSubmission hn m dims >>=
+    mkCounterSubmission m dims >>=
     submitPacket r m (redisQueueBound cfg)
 
 
 -------------------------------------------------------------------------------
 -- | Flush given sampler to remote service and flush in-memory queue
 flushSampler
-  :: HostName
-  -> Connection
+  :: Connection
   -> InstrumentConfig
   -> ((MetricName, Dimensions), S.Sampler)
   -> IO ()
-flushSampler host r cfg ((name, dims), sampler) = do
+flushSampler r cfg ((name, dims), sampler) = do
   vals <- S.get sampler
   case vals of
     [] -> return ()
     _ -> do
       S.reset sampler
-      submitPacket r name (redisQueueBound cfg) =<< mkSampledSubmission host name dims vals
+      submitPacket r name (redisQueueBound cfg) =<< mkSampledSubmission name dims vals
 
 
 -------------------------------------------------------------------------------
 -- | Increment a counter by one. Same as calling 'countI' with 1.
 --
 -- >>> incrementI \"uploadedFiles\" instr
-incrementI :: (MonadIO m) => MetricName -> Dimensions -> Instrument -> m ()
-incrementI m dims i = liftIO $ C.increment =<< getCounter m dims i
+incrementI
+  :: (MonadIO m)
+  => MetricName
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> Instrument
+  -> m ()
+incrementI m hostDimPolicy rawDims i =
+  liftIO $ C.increment =<< getCounter m dims i
+  where
+    dims = case hostDimPolicy of
+      AddHostDimension -> addHostDimension (hostName i) rawDims
+      DoNotAddHostDimension -> rawDims
 
 
 -------------------------------------------------------------------------------
 -- | Increment a counter by n.
 --
 -- >>> countI \"uploadedFiles\" 1 instr
-countI :: MonadIO m => MetricName -> Dimensions -> Int -> Instrument -> m ()
-countI m dims n i = liftIO $ C.add n =<< getCounter m dims i
+countI
+  :: MonadIO m
+  => MetricName
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> Int
+  -> Instrument
+  -> m ()
+countI m hostDimPolicy rawDims n i =
+  liftIO $ C.add n =<< getCounter m dims i
+  where
+    dims = case hostDimPolicy of
+      AddHostDimension -> addHostDimension (hostName i) rawDims
+      DoNotAddHostDimension -> rawDims
 
 
 -- | Run a monadic action while measuring its runtime. Push the
 -- measurement into the instrument system.
 --
 -- >>> timeI \"fileUploadTime\" instr $ uploadFile file
-timeI :: (MonadIO m) => MetricName -> Dimensions -> Instrument -> m a -> m a
-timeI name dims i act = do
+timeI
+  :: (MonadIO m)
+  => MetricName
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> Instrument
+  -> m a
+  -> m a
+timeI name hostDimPolicy rawDims i act = do
   (!secs, !res) <- TM.time act
-  liftIO $ sampleI nm dims secs i
+  liftIO $ sampleI nm hostDimPolicy rawDims secs i
   return res
   where
     nm = MetricName ("time." ++ metricName name)
@@ -181,8 +205,20 @@ timeI name dims i act = do
 -- something like:
 --
 -- >>> sampleI \"uploadQueue\" 27 inst
-sampleI :: MonadIO m => MetricName -> Dimensions -> Double -> Instrument -> m ()
-sampleI name dims v i = liftIO $ S.sample v =<< getSampler name dims i
+sampleI
+  :: MonadIO m
+  => MetricName
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> Double
+  -> Instrument
+  -> m ()
+sampleI name hostDimPolicy rawDims v i =
+  liftIO $ S.sample v =<< getSampler name dims i
+  where
+    dims = case hostDimPolicy of
+      AddHostDimension -> addHostDimension (hostName i) rawDims
+      DoNotAddHostDimension -> rawDims
 
 
 -------------------------------------------------------------------------------
