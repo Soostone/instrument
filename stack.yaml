@@ -1,6 +1,7 @@
-resolver: lts-9.1
+resolver: lts-9.6
 packages:
-  - '.'
+  - instrument
+  - instrument-cloudwatch
   - location:
       git: https://github.com/Soostone/safecopy-hunit.git
       commit: c573e756a2057034c9b33b0509af15fa54eeb246
@@ -10,5 +11,7 @@ extra-deps:
   - path-io-1.3.3
 flags:
   instrument:
+    lib-Werror: true
+  instrument-cloudwatch:
     lib-Werror: true
 extra-package-dbs: []
