@@ -1,3 +1,10 @@
+# 0.4.0.0
+
+Features:
+  - Add dimensions support.
+  - Move hostname tracking to dimensions and make it opt-in at the use
+    site level.
+
 # 0.3.0.0
 
 Features:

@@ -1,5 +1,5 @@
 name:                instrument
-version:             0.3.0.0
+version:             0.4.0.0
 synopsis:            Easy stats/metrics instrumentation for Haskell programs
 license:             BSD3
 license-file:        LICENSE
