@@ -33,11 +33,8 @@ time act = do
 
 -- | Just measure how long action takes, discard its result
 time_ :: MonadIO m => m a -> m Double
-time_ act = do
-  start <- liftIO getTime
-  _ <- act
-  end <- liftIO getTime
-  return $! end - start
+time_  = fmap fst . time
+
 
 -------------------------------------------------------------------------------
 getTime :: IO Double
