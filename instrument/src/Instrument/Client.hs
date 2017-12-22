@@ -4,6 +4,8 @@ module Instrument.Client
     , initInstrument
     , sampleI
     , timeI
+    , TM.time
+    , submitTime
     , incrementI
     , countI
     ) where
@@ -190,12 +192,33 @@ timeI
   -> m a
 timeI name hostDimPolicy rawDims i act = do
   (!secs, !res) <- TM.time act
-  liftIO $ sampleI nm hostDimPolicy rawDims secs i
+  submitTime nm hostDimPolicy rawDims secs i
   return res
   where
     nm = MetricName ("time." ++ metricName name)
 
 
+-------------------------------------------------------------------------------
+-- | Sometimes dimensions are determined within a code block that
+-- you're measuring. In that case, you can use 'time' to measure it
+-- and when you're ready to submit, use 'submitTime'.
+--
+-- Also, you may be pulling time details from some external source
+-- that you can't measure with 'timeI' yourself.
+submitTime
+  :: (MonadIO m)
+  => MetricName
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> Double
+  -- ^ Time in seconds
+  -> Instrument
+  -> m ()
+submitTime nm hostDimPolicy rawDims secs i =
+  liftIO $ sampleI nm hostDimPolicy rawDims secs i
+
+
+-------------------------------------------------------------------------------
 -- | Record given measurement under the given label.
 --
 -- Instrument will automatically capture useful stats like min, max,
