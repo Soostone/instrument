@@ -22,6 +22,7 @@ module Instrument.Types
   , Stats(..)
   , hostDimension
   , HostDimensionPolicy(..)
+  , Quantile(..)
   ) where
 
 -------------------------------------------------------------------------------
@@ -288,7 +289,16 @@ instance Default Stats where
 instance Serialize Stats
 
 
+-------------------------------------------------------------------------------
+-- | Integer quantile, valid values range from 1-99, inclusive.
+newtype Quantile = Q { quantile :: Int } deriving (Show, Eq, Ord)
 
+instance Bounded Quantile where
+  minBound = Q 1
+  maxBound = Q 99
+
+
+-------------------------------------------------------------------------------
 $(SC.deriveSafeCopy 0 'SC.base ''Payload)
 $(SC.deriveSafeCopy 0 'SC.base ''SubmissionPacket_v0)
 $(SC.deriveSafeCopy 1 'SC.extension ''SubmissionPacket)

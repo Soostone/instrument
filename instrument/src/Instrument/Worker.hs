@@ -244,15 +244,6 @@ data AggProcess = AggProcess
 
 
 -------------------------------------------------------------------------------
--- | Integer quantile, valid values range from 1-99, inclusive.
-newtype Quantile = Q { quantile :: Int } deriving (Show, Eq, Ord)
-
-instance Bounded Quantile where
-  minBound = Q 1
-  maxBound = Q 99
-
-
--------------------------------------------------------------------------------
 -- | General configuration for agg processes. Defaulted with 'def' and 'defAggProcessConfig'
 data AggProcessConfig = AggProcessConfig
   { metricQuantiles :: MetricName -> Set.Set Quantile
