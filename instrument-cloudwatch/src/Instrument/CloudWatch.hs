@@ -27,6 +27,7 @@ import           Data.List.NonEmpty                   (NonEmpty (..))
 import qualified Data.List.NonEmpty                   as NE
 import qualified Data.Map                             as M
 import           Data.Monoid
+import           Data.Semigroup                       (sconcat)
 import           Data.Text                            (Text)
 import qualified Data.Text                            as T
 import           Data.Time.Clock
@@ -95,8 +96,9 @@ startWorker CloudWatchICfg {..} q = go
           maggs <- atomically (slurpTBMQueue q)
           case maggs of
             Just rawAggs -> do
-              FT.forM_ (splitNE maxDatums rawAggs) $ \aggs -> do
-                let pmd = putMetricData cwiNamespace & pmdMetricData .~ FT.toList (toDatum A.<$> aggs)
+              let datums = sconcat (toDatum A.<$> rawAggs)
+              FT.forM_ (splitNE maxDatums datums) $ \datumPage -> do
+                let pmd = putMetricData cwiNamespace & pmdMetricData .~ FT.toList datumPage
                 void (runResourceT (awsRetry (runAWS cwiEnv (send pmd))))
               go
             Nothing -> return ()
@@ -116,24 +118,39 @@ splitNE n xs
 
 
 -------------------------------------------------------------------------------
---TODO: publish quantiles
-toDatum :: Aggregated -> MetricDatum
-toDatum a = md & mdTimestamp .~ Just ts
-                              & mdStatisticValues .~ ss
-                              & mdValue .~ val
-                              & mdDimensions .~ dims
-  where md = metricDatum (T.pack (metricName (aggName a)))
-        ts = aggTS a ^. timeDouble
-        ss = case aggPayload a of
-               AggStats stats -> Just (toSS stats)
-               _              -> Nothing
-        val = case aggPayload a of
-                AggCount n -> Just (fromIntegral n)
-                _          -> Nothing
-        dims = uncurry mkDim <$> take maxDimensions (M.toList (aggDimensions a))
-        mkDim (DimensionName dn) (DimensionValue dv) = dimension dn dv
-        -- | <http://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_limits.html>
-        maxDimensions = 10
+-- | Expands the aggregated stats into datums. In most cases, this
+-- will result in 1 datum. If the payload is an 'AggStats' and
+-- contains quantiles, those will be emitted as individual metrics
+-- with the quantile appended, e.g. metricName.p90
+toDatum :: Aggregated -> NonEmpty MetricDatum
+toDatum a =
+  baseDatum :| quantileDatums
+  where
+    baseDatum =
+     mkDatum baseMetricName $ case aggPayload a of
+       AggStats stats -> Right (toSS stats)
+       AggCount n     -> Left (fromIntegral n)
+    mkDatum name dValOrStats =
+      let base = metricDatum (T.pack name)
+            & mdTimestamp .~ Just ts
+            & mdDimensions .~ dims
+         -- Value and stats are mutually exclusive
+      in case dValOrStats of
+           Left dVal    -> base & mdValue ?~ dVal
+           Right dStats -> base & mdStatisticValues ?~ dStats
+    quantileDatums = uncurry mkQuantileDatum <$> quantiles
+    mkQuantileDatum :: Int -> Double -> MetricDatum
+    mkQuantileDatum quantile val =
+      mkDatum (baseMetricName <> ".p" <> show quantile) (Left val)
+    quantiles = case aggPayload a of
+      AggStats stats -> M.toList (squantiles stats)
+      AggCount _     -> []
+    baseMetricName = (metricName (aggName a))
+    ts = aggTS a ^. timeDouble
+    dims = uncurry mkDim <$> take maxDimensions (M.toList (aggDimensions a))
+    mkDim (DimensionName dn) (DimensionValue dv) = dimension dn dv
+    -- | <http://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_limits.html>
+    maxDimensions = 10
 
 
 -------------------------------------------------------------------------------
