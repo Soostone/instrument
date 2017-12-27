@@ -34,7 +34,7 @@ queue_bounding_test mkConn = do
     -- bounds will drop these
     sampleI key DoNotAddHostDimension dims 100 instr
     sleepFlush
-    void $ forkIO $ work conn 1 (liftIO . putMVar agg)
+    void $ forkIO $ work conn 1 (AggProcess defAggProcessConfig (liftIO . putMVar agg))
     Aggregated { aggPayload = AggStats Stats {..} } <- takeMVar agg
     assertEqual "throws away newer data exceeding bounds"
                 (2, 1, 1, 2)

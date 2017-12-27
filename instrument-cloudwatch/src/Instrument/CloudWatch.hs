@@ -52,9 +52,18 @@ queueSize = prism' f t
 
 
 -------------------------------------------------------------------------------
-data CloudWatchICfg = CloudWatchICfg { cwiNamespace :: Text
-                                     , cwiQueueSize :: QueueSize
-                                     , cwiEnv       :: Env }
+data CloudWatchICfg = CloudWatchICfg
+  { cwiNamespace        :: Text
+  , cwiQueueSize        :: QueueSize
+  , cwiEnv              :: Env
+  , cwiAggProcessConfig :: AggProcessConfig
+  -- ^ Note: you should probably limit the quantiles you publish with
+  -- this backend. Every quantile you decide to publish for a metric
+  -- has to be published as a *separate* metric because of the way
+  -- cloudwatch works. So if you use something like
+  -- 'standardQuantiles', you're going to see (and pay for) 11 metrics
+  -- per metric you publish.
+  }
 
 
 -------------------------------------------------------------------------------
@@ -76,7 +85,7 @@ cloudWatchAggProcess cfg@CloudWatchICfg {..} = do
 
   let writer agg = liftIO (atomically (void (tryWriteTBMQueue q agg)))
   let finalizer = putMVar endSig () >> takeMVar endSig
-  return (writer, finalizer)
+  return (AggProcess cwiAggProcessConfig writer, finalizer)
 
 
 -------------------------------------------------------------------------------
@@ -107,6 +116,7 @@ splitNE n xs
 
 
 -------------------------------------------------------------------------------
+--TODO: publish quantiles
 toDatum :: Aggregated -> MetricDatum
 toDatum a = md & mdTimestamp .~ Just ts
                               & mdStatisticValues .~ ss

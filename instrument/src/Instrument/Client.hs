@@ -8,6 +8,7 @@ module Instrument.Client
     , submitTime
     , incrementI
     , countI
+    , timerMetricName
     ) where
 
 -------------------------------------------------------------------------------
@@ -195,8 +196,12 @@ timeI name hostDimPolicy rawDims i act = do
   submitTime nm hostDimPolicy rawDims secs i
   return res
   where
-    nm = MetricName ("time." ++ metricName name)
+    nm = timerMetricName name
 
+
+-------------------------------------------------------------------------------
+timerMetricName :: MetricName -> MetricName
+timerMetricName name = MetricName ("time." ++ metricName name)
 
 -------------------------------------------------------------------------------
 -- | Sometimes dimensions are determined within a code block that
