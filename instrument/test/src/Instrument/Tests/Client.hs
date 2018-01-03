@@ -9,12 +9,15 @@ import           Control.Concurrent
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Default
-import qualified Data.Map               as M
+import qualified Data.Map                   as M
+import           Data.Monoid
 import           Database.Redis
 import           Test.Tasty
 import           Test.Tasty.HUnit
+import           Test.Tasty.QuickCheck
 -------------------------------------------------------------------------------
 import           Instrument.Client
+import           Instrument.Tests.Arbitrary ()
 import           Instrument.Types
 import           Instrument.Worker
 -------------------------------------------------------------------------------
@@ -22,6 +25,7 @@ import           Instrument.Worker
 tests :: TestTree
 tests = testGroup "Instrument.Client"
     [ withRedisCleanup $ testCase "queue bounding works" . queue_bounding_test
+    , timerMetricNameTests
     ]
 
 queue_bounding_test :: IO Connection -> IO ()
@@ -41,6 +45,22 @@ queue_bounding_test mkConn = do
                 (scount, smin, smax, ssum)
   where
     sleepFlush =   threadDelay 1100000
+
+timerMetricNameTests :: TestTree
+timerMetricNameTests = testGroup "timerMetricName"
+  [ testProperty "is idempotent" $ \mn ->
+      let r1 = timerMetricName mn
+          r2 =  timerMetricName r1
+      in r1 === r2
+  , testProperty "is idempotent for timers" $ \(MetricName mnBase) ->
+      let mn = MetricName (timerMetricNamePrefix <> mnBase)
+          r1 = timerMetricName mn
+          r2 =  timerMetricName r1
+      in r1 === r2
+  , testCase "adds time. prefix" $ do
+      timerMetricName (MetricName "foo") @?= MetricName "time.foo"
+  ]
+
 
 withRedisCleanup :: (IO Connection -> TestTree) -> TestTree
 withRedisCleanup = withResource (connect redisCI) cleanup

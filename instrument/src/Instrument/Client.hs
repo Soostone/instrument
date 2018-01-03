@@ -9,6 +9,7 @@ module Instrument.Client
     , incrementI
     , countI
     , timerMetricName
+    , timerMetricNamePrefix
     ) where
 
 -------------------------------------------------------------------------------
@@ -18,7 +19,9 @@ import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
 import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
+import           Data.List              (isPrefixOf)
 import qualified Data.Map               as M
+import           Data.Monoid
 import qualified Data.SafeCopy          as SC
 import qualified Data.Text              as T
 import           Database.Redis         as R hiding (HostName, time)
@@ -199,7 +202,16 @@ timeI nm hostDimPolicy rawDims i act = do
 
 -------------------------------------------------------------------------------
 timerMetricName :: MetricName -> MetricName
-timerMetricName name = MetricName ("time." ++ metricName name)
+timerMetricName name@(MetricName nameS) =
+  if timerMetricNamePrefix `isPrefixOf` nameS
+     then name
+     else MetricName (timerMetricNamePrefix <> nameS)
+
+
+-------------------------------------------------------------------------------
+timerMetricNamePrefix :: String
+timerMetricNamePrefix = "time."
+
 
 -------------------------------------------------------------------------------
 -- | Sometimes dimensions are determined within a code block that
