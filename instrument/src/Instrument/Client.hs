@@ -9,6 +9,7 @@ module Instrument.Client
     , incrementI
     , countI
     , timerMetricName
+    , stripTimerPrefix
     , timerMetricNamePrefix
     ) where
 
@@ -19,7 +20,7 @@ import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
 import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
-import           Data.List              (isPrefixOf)
+import           Data.List              (isPrefixOf, stripPrefix)
 import qualified Data.Map               as M
 import           Data.Monoid
 import qualified Data.SafeCopy          as SC
@@ -206,6 +207,13 @@ timerMetricName name@(MetricName nameS) =
   if timerMetricNamePrefix `isPrefixOf` nameS
      then name
      else MetricName (timerMetricNamePrefix <> nameS)
+
+
+-------------------------------------------------------------------------------
+stripTimerPrefix :: MetricName -> MetricName
+stripTimerPrefix (MetricName n) = case stripPrefix timerMetricNamePrefix n of
+  Just unprefixed -> MetricName unprefixed
+  Nothing         -> MetricName n
 
 
 -------------------------------------------------------------------------------

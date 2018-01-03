@@ -42,7 +42,7 @@ import           Statistics.Sample
 import           System.IO
 import           System.Posix
 -------------------------------------------------------------------------------
-import           Instrument.Client      (timerMetricName)
+import           Instrument.Client      (stripTimerPrefix, timerMetricName)
 import qualified Instrument.Measurement as TM
 import           Instrument.Types
 import           Instrument.Utils
@@ -170,8 +170,8 @@ processSampler n (AggProcess cfg f) k = do
     [] -> return ()
     _ -> do
       let nm = spName . head $ packets
-          -- have to prefix the timer prefix to make sure we catch those too
-          qs = quantilesFn nm <> quantilesFn (timerMetricName nm)
+          -- with and without timer prefix
+          qs = quantilesFn (stripTimerPrefix nm) <> quantilesFn (timerMetricName nm)
           byDims :: M.Map Dimensions [SubmissionPacket]
           byDims = collect packets spDimensions id
           mkAgg xs =
