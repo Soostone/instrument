@@ -18,3 +18,7 @@ instance Arbitrary DimensionName where
 
 instance Arbitrary DimensionValue where
   arbitrary = DimensionValue <$> arbitrary
+
+
+instance Arbitrary MetricName where
+  arbitrary = MetricName <$> arbitrary

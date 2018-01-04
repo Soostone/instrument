@@ -8,6 +8,9 @@ module Instrument.Client
     , submitTime
     , incrementI
     , countI
+    , timerMetricName
+    , stripTimerPrefix
+    , timerMetricNamePrefix
     ) where
 
 -------------------------------------------------------------------------------
@@ -17,7 +20,9 @@ import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
 import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
+import           Data.List              (isPrefixOf, stripPrefix)
 import qualified Data.Map               as M
+import           Data.Monoid
 import qualified Data.SafeCopy          as SC
 import qualified Data.Text              as T
 import           Database.Redis         as R hiding (HostName, time)
@@ -190,12 +195,30 @@ timeI
   -> Instrument
   -> m a
   -> m a
-timeI name hostDimPolicy rawDims i act = do
+timeI nm hostDimPolicy rawDims i act = do
   (!secs, !res) <- TM.time act
   submitTime nm hostDimPolicy rawDims secs i
   return res
-  where
-    nm = MetricName ("time." ++ metricName name)
+
+
+-------------------------------------------------------------------------------
+timerMetricName :: MetricName -> MetricName
+timerMetricName name@(MetricName nameS) =
+  if timerMetricNamePrefix `isPrefixOf` nameS
+     then name
+     else MetricName (timerMetricNamePrefix <> nameS)
+
+
+-------------------------------------------------------------------------------
+stripTimerPrefix :: MetricName -> MetricName
+stripTimerPrefix (MetricName n) = case stripPrefix timerMetricNamePrefix n of
+  Just unprefixed -> MetricName unprefixed
+  Nothing         -> MetricName n
+
+
+-------------------------------------------------------------------------------
+timerMetricNamePrefix :: String
+timerMetricNamePrefix = "time."
 
 
 -------------------------------------------------------------------------------
@@ -205,6 +228,9 @@ timeI name hostDimPolicy rawDims i act = do
 --
 -- Also, you may be pulling time details from some external source
 -- that you can't measure with 'timeI' yourself.
+--
+-- Note: for legacy purposes, metric name will have "time." prepended
+-- to it.
 submitTime
   :: (MonadIO m)
   => MetricName
@@ -214,8 +240,10 @@ submitTime
   -- ^ Time in seconds
   -> Instrument
   -> m ()
-submitTime nm hostDimPolicy rawDims secs i =
+submitTime nameRaw hostDimPolicy rawDims secs i =
   liftIO $ sampleI nm hostDimPolicy rawDims secs i
+  where
+    nm = timerMetricName nameRaw
 
 
 -------------------------------------------------------------------------------

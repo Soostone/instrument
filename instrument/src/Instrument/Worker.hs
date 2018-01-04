@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Instrument.Worker
     ( initWorkerCSV
@@ -8,7 +9,13 @@ module Instrument.Worker
     , initWorkerGraphite'
     , work
     , initWorker
-    , AggProcess
+    , AggProcess(..)
+    -- * Configuring agg processes
+    , AggProcessConfig(..)
+    , standardQuantiles
+    , noQuantiles
+    , quantileMap
+    , defAggProcessConfig
     -- * Exported for testing
     , expandDims
     ) where
@@ -35,6 +42,7 @@ import           Statistics.Sample
 import           System.IO
 import           System.Posix
 -------------------------------------------------------------------------------
+import           Instrument.Client      (stripTimerPrefix, timerMetricName)
 import qualified Instrument.Measurement as TM
 import           Instrument.Types
 import           Instrument.Utils
@@ -50,9 +58,10 @@ initWorkerCSV
   -- ^ Target file name
   -> Int
   -- ^ Aggregation period / flush interval in seconds
+  -> AggProcessConfig
   -> IO ()
-initWorkerCSV conn fp n =
-  initWorker "CSV Worker" conn n =<< initWorkerCSV' fp
+initWorkerCSV conn fp n cfg =
+  initWorker "CSV Worker" conn n =<< initWorkerCSV' fp cfg
 
 
 -------------------------------------------------------------------------------
@@ -61,15 +70,15 @@ initWorkerCSV conn fp n =
 initWorkerCSV'
   :: FilePath
   -- ^ Target file name
-  -- ^ Aggregation period / flush interval in seconds
+  -> AggProcessConfig
   -> IO AggProcess
-initWorkerCSV' fp = do
+initWorkerCSV' fp cfg = do
   !res <- fileExist fp
   !h <- openFile fp AppendMode
   hSetBuffering h LineBuffering
   unless res $
     T.hPutStrLn h $ rowToStr defCSVSettings . M.keys $ aggToCSV def
-  return $ putAggregateCSV h
+  return $ putAggregateCSV h cfg
 
 
 -------------------------------------------------------------------------------
@@ -83,9 +92,10 @@ initWorkerGraphite
     -- ^ Graphite host
     -> Int
     -- ^ Graphite port
+    -> AggProcessConfig
     -> IO ()
-initWorkerGraphite conn n server port =
-    initWorker "Graphite Worker" conn n =<< initWorkerGraphite' server port
+initWorkerGraphite conn n server port cfg =
+    initWorker "Graphite Worker" conn n =<< initWorkerGraphite' server port cfg
 
 
 -------------------------------------------------------------------------------
@@ -96,11 +106,12 @@ initWorkerGraphite'
     -- ^ Graphite host
     -> Int
     -- ^ Graphite port
+    -> AggProcessConfig
     -> IO AggProcess
-initWorkerGraphite' server port = do
+initWorkerGraphite' server port cfg = do
     h <- connectTo server (PortNumber $ fromIntegral port)
     hSetBuffering h LineBuffering
-    return $ putAggregateGraphite h
+    return $ putAggregateGraphite h cfg
 
 
 -------------------------------------------------------------------------------
@@ -117,19 +128,19 @@ initWorker wname conn n f = do
 
 -------------------------------------------------------------------------------
 -- | Extract statistics out of the given sample for this flush period
-mkStats :: Sample -> Stats
-mkStats s = Stats { smean = mean s
-                  , ssum = V.sum s
-                  , scount = V.length s
-                  , smax = V.maximum s
-                  , smin = V.minimum s
-                  , srange = range s
-                  , sstdev = stdDev s
-                  , sskewness = skewness s
-                  , skurtosis = kurtosis s
-                  , squantiles = quantiles }
+mkStats :: Set.Set Quantile -> Sample -> Stats
+mkStats qs s = Stats { smean = mean s
+                     , ssum = V.sum s
+                     , scount = V.length s
+                     , smax = V.maximum s
+                     , smin = V.minimum s
+                     , srange = range s
+                     , sstdev = stdDev s
+                     , sskewness = skewness s
+                     , skurtosis = kurtosis s
+                     , squantiles = quantiles }
   where
-    quantiles = M.fromList $ mkQ 100 99 : map (mkQ 100 . (* 10)) [1..9]
+    quantiles = M.fromList (mkQ 100 . quantile <$> Set.toList qs)
     mkQ mx i = (i, Q.weightedAvg i mx s)
 
 
@@ -153,17 +164,19 @@ processSampler
     -> B.ByteString
     -- ^ Redis buffer for this metric
     -> Redis ()
-processSampler n f k = do
+processSampler n (AggProcess cfg f) k = do
   packets <- popLAll k
   case packets of
     [] -> return ()
     _ -> do
       let nm = spName . head $ packets
+          -- with and without timer prefix
+          qs = quantilesFn (stripTimerPrefix nm) <> quantilesFn (timerMetricName nm)
           byDims :: M.Map Dimensions [SubmissionPacket]
           byDims = collect packets spDimensions id
           mkAgg xs =
               case spPayload $ head xs of
-                Samples _ -> AggStats . mkStats . V.fromList .
+                Samples _ -> AggStats . mkStats qs . V.fromList .
                              concatMap (unSamples . spPayload) $
                              xs
                 Counter _ -> AggCount . sum .
@@ -174,6 +187,8 @@ processSampler n f k = do
           mkDimsAgg (dims, ps) = Aggregated t nm (mkAgg ps) dims
       mapM_ f aggs
       return ()
+  where
+    quantilesFn = metricQuantiles cfg
 
 
 -------------------------------------------------------------------------------
@@ -222,15 +237,61 @@ expandDims m =
 
 -- | A function that does something with the aggregation results. Can
 -- implement multiple backends simply using this.
-type AggProcess = Aggregated -> Redis ()
+data AggProcess = AggProcess
+  { apConfig :: AggProcessConfig
+  , apProc   :: Aggregated -> Redis ()
+  }
 
+
+-------------------------------------------------------------------------------
+-- | General configuration for agg processes. Defaulted with 'def' and 'defAggProcessConfig'
+data AggProcessConfig = AggProcessConfig
+  { metricQuantiles :: MetricName -> Set.Set Quantile
+  -- ^ What quantiles should we calculate for any given metric, if
+  -- any? We offer some common patterns for this in 'quantileMap',
+  -- 'standardQuantiles', and 'noQuantiles'.
+  }
+
+
+-- | Uses 'standardQuantiles'.
+defAggProcessConfig :: AggProcessConfig
+defAggProcessConfig = AggProcessConfig standardQuantiles
+
+
+instance Default AggProcessConfig where
+  def = defAggProcessConfig
+
+
+-- | Regardless of metric, produce no quantiles.
+noQuantiles :: MetricName -> [Quantile]
+noQuantiles = const mempty
+
+
+-- | This is usually a good, comprehensive default. Produces quantiles
+-- 10,20,30,40,50,60,70,80,90,99. *Note:* for some backends like
+-- cloudwatch, each quantile produces an additional metric, so you
+-- should probably consider using something more limited than this.
+standardQuantiles :: MetricName -> Set.Set Quantile
+standardQuantiles _ =
+  Set.fromList [Q 10,Q 20,Q 30,Q 40,Q 50,Q 60,Q 70,Q 80,Q 90,Q 99]
+
+
+-- | If you have a fixed set of metric names, this is often a
+-- convenient way to express quantiles-per-metric.
+quantileMap
+  :: M.Map MetricName (Set.Set Quantile)
+  -> Set.Set Quantile
+  -- ^ What to return on miss
+  -> (MetricName -> Set.Set Quantile)
+quantileMap m qdef mn = fromMaybe qdef (M.lookup mn m)
 
 
 -------------------------------------------------------------------------------
 -- | Store aggregation results in a CSV file
-putAggregateCSV :: Handle -> AggProcess
-putAggregateCSV h agg = liftIO $ T.hPutStrLn h d
-  where d = rowToStr defCSVSettings $ aggToCSV agg
+putAggregateCSV :: Handle -> AggProcessConfig -> AggProcess
+putAggregateCSV h cfg = AggProcess cfg $ \agg ->
+  let d = rowToStr defCSVSettings $ aggToCSV agg
+  in liftIO $ T.hPutStrLn h d
 
 
 typePrefix :: AggPayload -> T.Text
@@ -240,20 +301,20 @@ typePrefix AggCount{} = "counts"
 
 -------------------------------------------------------------------------------
 -- | Push data into a Graphite database using the plaintext protocol
-putAggregateGraphite :: Handle -> AggProcess
-putAggregateGraphite h agg = liftIO $ mapM_ (mapM_ (T.hPutStrLn h) . mkLines) ss
-    where
-      (ss, ts) = mkStatsFields agg
-      -- Expand dimensions into one datum per dimension pair as the group
-      mkLines (m, val) = for (M.toList (aggDimensions agg)) $ \(DimensionName dimName, DimensionValue dimVal) -> T.concat
-          [ "inst."
-          , typePrefix (aggPayload agg), "."
-          ,  T.pack (metricName (aggName agg)), "."
-          , m, "."
-          , dimName, "."
-          , dimVal, " "
-          , val, " "
-          , ts ]
+putAggregateGraphite :: Handle -> AggProcessConfig -> AggProcess
+putAggregateGraphite h cfg = AggProcess cfg $ \agg ->
+    let (ss, ts) = mkStatsFields agg
+        -- Expand dimensions into one datum per dimension pair as the group
+        mkLines (m, val) = for (M.toList (aggDimensions agg)) $ \(DimensionName dimName, DimensionValue dimVal) -> T.concat
+            [ "inst."
+            , typePrefix (aggPayload agg), "."
+            ,  T.pack (metricName (aggName agg)), "."
+            , m, "."
+            , dimName, "."
+            , dimVal, " "
+            , val, " "
+            , ts ]
+    in liftIO $ mapM_ (mapM_ (T.hPutStrLn h) . mkLines) ss
 
 
 -------------------------------------------------------------------------------
@@ -288,3 +349,43 @@ dbg _ = return ()
 -- ------------------------------------------------------------------------------
 -- dbg :: (MonadIO m) => String -> m ()
 -- dbg s = debug $ "Instrument.Worker: " ++ s
+
+
+-------------------------------------------------------------------------------
+-- | Expand count aggregation to have the full columns
+aggToCSV :: Aggregated -> M.Map T.Text T.Text
+aggToCSV agg@Aggregated{..} = els <> defFields <> dimFields
+  where
+    els :: MapRow T.Text
+    els = M.fromList $
+            ("metric", T.pack (metricName aggName)) :
+            ("timestamp", ts) :
+            fields
+    (fields, ts) = mkStatsFields agg
+    defFields = M.fromList $ fst $ mkStatsFields $ agg { aggPayload =  (AggStats def) }
+    dimFields = M.fromList [(k,v) | (DimensionName k, DimensionValue v) <- M.toList aggDimensions]
+
+
+-------------------------------------------------------------------------------
+-- | Get agg results into a form ready to be output
+mkStatsFields :: Aggregated -> ([(T.Text, T.Text)], T.Text)
+mkStatsFields Aggregated{..}  = (els, ts)
+    where
+      els =
+        case aggPayload of
+          AggStats Stats{..} ->
+              [ ("mean", formatDecimal 6 False smean)
+              , ("count", showT scount)
+              , ("max", formatDecimal 6 False smax)
+              , ("min", formatDecimal 6 False smin)
+              , ("srange", formatDecimal 6 False srange)
+              , ("stdDev", formatDecimal 6 False sstdev)
+              , ("sum", formatDecimal 6 False ssum)
+              , ("skewness", formatDecimal 6 False sskewness)
+              , ("kurtosis", formatDecimal 6 False skurtosis)
+              ] ++ (map mkQ $ M.toList squantiles)
+          AggCount i ->
+              [ ("count", showT i)]
+
+      mkQ (k,v) = (T.concat ["percentile_", showT k], formatDecimal 6 False v)
+      ts = formatInt aggTS

@@ -19,21 +19,19 @@ module Instrument.Types
   , Payload(..)
   , Aggregated(..)
   , AggPayload(..)
-  , mkStatsFields
-  , aggToCSV
   , Stats(..)
   , hostDimension
   , HostDimensionPolicy(..)
+  , Quantile(..)
   ) where
 
 -------------------------------------------------------------------------------
 import           Control.Applicative   as A
 import qualified Data.ByteString.Char8 as B
-import           Data.CSV.Conduit
 import           Data.Default
 import           Data.IORef
 import qualified Data.Map              as M
-import           Data.Monoid
+import           Data.Monoid           as Monoid
 import qualified Data.SafeCopy         as SC
 import           Data.Serialize
 import           Data.Serialize.Text   ()
@@ -46,7 +44,6 @@ import           Network.HostName
 -------------------------------------------------------------------------------
 import qualified Instrument.Counter    as C
 import qualified Instrument.Sampler    as S
-import           Instrument.Utils
 -------------------------------------------------------------------------------
 
 
@@ -239,7 +236,7 @@ upgradeAggregated_v1 a = Aggregated
   { aggTS = aggTS_v1 a
   , aggName = aggName_v1 a
   , aggPayload = aggPayload_v1 a
-  , aggDimensions = mempty
+  , aggDimensions = Monoid.mempty
   }
 
 
@@ -271,46 +268,6 @@ instance Default Aggregated where
 
 
 -------------------------------------------------------------------------------
--- | Get agg results into a form ready to be output
-mkStatsFields :: Aggregated -> ([(Text, Text)], Text)
-mkStatsFields Aggregated{..}  = (els, ts)
-    where
-      els =
-        case aggPayload of
-          AggStats Stats{..} ->
-              [ ("mean", formatDecimal 6 False smean)
-              , ("count", showT scount)
-              , ("max", formatDecimal 6 False smax)
-              , ("min", formatDecimal 6 False smin)
-              , ("srange", formatDecimal 6 False srange)
-              , ("stdDev", formatDecimal 6 False sstdev)
-              , ("sum", formatDecimal 6 False ssum)
-              , ("skewness", formatDecimal 6 False sskewness)
-              , ("kurtosis", formatDecimal 6 False skurtosis)
-              ] ++ (map mkQ $ M.toList squantiles)
-          AggCount i ->
-              [ ("count", showT i)]
-
-      mkQ (k,v) = (T.concat ["percentile_", showT k], formatDecimal 6 False v)
-      ts = formatInt aggTS
-
-
--------------------------------------------------------------------------------
--- | Expand count aggregation to have the full columns
-aggToCSV :: Aggregated -> M.Map Text Text
-aggToCSV agg@Aggregated{..} = els <> defFields <> dimFields
-  where
-    els :: MapRow Text
-    els = M.fromList $
-            ("metric", T.pack (metricName aggName)) :
-            ("timestamp", ts) :
-            fields
-    (fields, ts) = mkStatsFields agg
-    defFields = M.fromList $ fst $ mkStatsFields $ agg { aggPayload =  (AggStats def) }
-    dimFields = M.fromList [(k,v) | (DimensionName k, DimensionValue v) <- M.toList aggDimensions]
-
-
--------------------------------------------------------------------------------
 data Stats = Stats {
       smean      :: Double
     , ssum       :: Double
@@ -327,14 +284,21 @@ data Stats = Stats {
 
 
 instance Default Stats where
-    def = Stats 0 0 0 0 0 0 0 0 0 (M.fromList $ mkQ 99 : map (mkQ . (* 10)) [1..9])
-      where
-        mkQ i = (i, 0)
+    def = Stats 0 0 0 0 0 0 0 0 0 mempty
 
 instance Serialize Stats
 
 
+-------------------------------------------------------------------------------
+-- | Integer quantile, valid values range from 1-99, inclusive.
+newtype Quantile = Q { quantile :: Int } deriving (Show, Eq, Ord)
 
+instance Bounded Quantile where
+  minBound = Q 1
+  maxBound = Q 99
+
+
+-------------------------------------------------------------------------------
 $(SC.deriveSafeCopy 0 'SC.base ''Payload)
 $(SC.deriveSafeCopy 0 'SC.base ''SubmissionPacket_v0)
 $(SC.deriveSafeCopy 1 'SC.extension ''SubmissionPacket)
