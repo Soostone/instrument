@@ -6,12 +6,16 @@ module Instrument.Tests.Client
 
 -------------------------------------------------------------------------------
 import           Control.Concurrent
+import           Control.Concurrent.Async
+import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Default
+import           Data.List                  (find)
 import qualified Data.Map                   as M
 import           Data.Monoid
 import           Database.Redis
+import           System.Timeout
 import           Test.Tasty
 import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
@@ -25,9 +29,11 @@ import           Instrument.Worker
 tests :: TestTree
 tests = testGroup "Instrument.Client"
     [ withRedisCleanup $ testCase "queue bounding works" . queue_bounding_test
+    , withRedisCleanup $ testCase "multiple keys eventually get flushed" . multi_key_test
     , timerMetricNameTests
     ]
 
+-------------------------------------------------------------------------------
 queue_bounding_test :: IO Connection -> IO ()
 queue_bounding_test mkConn = do
     conn <- mkConn
@@ -38,14 +44,50 @@ queue_bounding_test mkConn = do
     -- bounds will drop these
     sampleI key DoNotAddHostDimension dims 100 instr
     sleepFlush
-    void $ forkIO $ work conn 1 (AggProcess defAggProcessConfig (liftIO . putMVar agg))
-    Aggregated { aggPayload = AggStats Stats {..} } <- takeMVar agg
-    assertEqual "throws away newer data exceeding bounds"
-                (2, 1, 1, 2)
-                (scount, smin, smax, ssum)
-  where
-    sleepFlush =   threadDelay 1100000
+    let worker = work conn 1 (AggProcess defAggProcessConfig (liftIO . putMVar agg))
+    withAsync worker $ \_ -> do
+      Aggregated { aggPayload = AggStats Stats {..} } <- takeMVar agg
+      assertEqual "throws away newer data exceeding bounds"
+                  (2, 1, 1, 2)
+                  (scount, smin, smax, ssum)
 
+
+-------------------------------------------------------------------------------
+sleepFlush :: IO ()
+sleepFlush = threadDelay 1100000
+
+
+-------------------------------------------------------------------------------
+multi_key_test :: IO Connection -> IO ()
+multi_key_test mkConn = do
+  conn <- mkConn
+  instr <- initInstrument redisCI icfg
+  aggsRef <- newTVarIO []
+  sampleI "instrument-test1" DoNotAddHostDimension mempty 1 instr
+  sampleI "instrument-test2" DoNotAddHostDimension mempty 2 instr
+  sleepFlush
+  let collectAggs = work conn 1 (AggProcess defAggProcessConfig (\agg -> liftIO (atomically (modifyTVar' aggsRef (agg:)))))
+  withAsync collectAggs $ \worker -> do
+    maggs <- timeout 2000000 $ atomically $ do
+      aggs <- readTVar aggsRef
+      check (length aggs >= 2)
+      return aggs
+    cancel worker
+    case maggs of
+      Nothing -> assertFailure "Waited 2 seconds and never received any aggs!"
+      Just aggs -> do
+        length aggs @?= 2
+        let findAgg n expectedMean = do
+              let magg = find ((== MetricName n) . aggName) aggs
+              case magg of
+                Nothing -> assertFailure ("Expected to find agg with name " <> n <> " but could not")
+                Just (Aggregated { aggPayload = AggStats (Stats { smean = actualMean})}) -> actualMean @?= expectedMean
+                Just _ -> assertFailure ("Expected agg with name " <> n <> " to contain Stats but it did not.")
+        findAgg "instrument-test1" 1.0
+        findAgg "instrument-test2" 2.0
+
+
+-------------------------------------------------------------------------------
 timerMetricNameTests :: TestTree
 timerMetricNameTests = testGroup "timerMetricName"
   [ testProperty "is idempotent" $ \mn ->
@@ -62,21 +104,28 @@ timerMetricNameTests = testGroup "timerMetricName"
   ]
 
 
+-------------------------------------------------------------------------------
 withRedisCleanup :: (IO Connection -> TestTree) -> TestTree
 withRedisCleanup = withResource (connect redisCI) cleanup
   where
     cleanup conn = void $ runRedis conn $ do
-      _ <- del ["_sq_instrument-test"]
+      ks <- either mempty id <$> smembers packetsKey
+      _ <- del (packetsKey:ks)
       quit
 
+
+-------------------------------------------------------------------------------
 redisCI :: ConnectInfo
 redisCI = defaultConnectInfo
+
 
 icfg :: InstrumentConfig
 icfg = def { redisQueueBound = Just 2 }
 
+
 key :: MetricName
 key = MetricName "instrument-test"
+
 
 dims :: Dimensions
 dims = M.fromList [(DimensionName "server", DimensionValue "app1")]

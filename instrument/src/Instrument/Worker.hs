@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -25,6 +26,8 @@ import           Control.Error
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
+import           Data.Conduit           (($$), (=$=))
+import qualified Data.Conduit.List      as CL
 import           Data.CSV.Conduit
 import           Data.Default
 import qualified Data.Map               as M
@@ -42,7 +45,8 @@ import           Statistics.Sample
 import           System.IO
 import           System.Posix
 -------------------------------------------------------------------------------
-import           Instrument.Client      (stripTimerPrefix, timerMetricName)
+import           Instrument.Client      (packetsKey, stripTimerPrefix,
+                                         timerMetricName)
 import qualified Instrument.Measurement as TM
 import           Instrument.Types
 import           Instrument.Utils
@@ -149,10 +153,24 @@ mkStats qs s = Stats { smean = mean s
 work :: R.Connection -> Int -> AggProcess -> IO ()
 work r n f = runRedis r $ do
     dbg "entered work block"
-    res <- R.keys (B.pack "_sq_*")
-    case res of
-      Left _   -> return ()
-      Right xs -> mapM_ (processSampler n f) xs
+    estimate <- either (const 0) id <$> scard packetsKey
+    CL.unfoldM getKeys estimate =$=
+      CL.concat $$
+      CL.mapM_ (processSampler n f)
+  where
+    -- | Somewhat randomly chosen heuristic for how many keys we
+    -- should pop at a time. SPOP is like SRANDOMMEMBERS in that it is
+    -- O(N) where n is the absolute value of the passed count. We want
+    -- it high enough to make the roundtrip worth our while while not
+    -- being big enough to hold the redis thread too long.
+    pageSize = 10
+    getKeys estRemaining
+      | estRemaining > 0 = do
+         ks <- either mempty id <$> spopN packetsKey (min estRemaining pageSize)
+         return $ if null ks
+           then Nothing
+           else Just (ks, estRemaining - fromIntegral (length ks))
+      | otherwise = return Nothing
 
 
 -------------------------------------------------------------------------------

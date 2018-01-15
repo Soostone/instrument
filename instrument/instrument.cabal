@@ -1,5 +1,5 @@
 name:                instrument
-version:             0.4.0.0
+version:             0.5.0.0
 synopsis:            Easy stats/metrics instrumentation for Haskell programs
 license:             BSD3
 license-file:        LICENSE
@@ -40,7 +40,7 @@ library
     , transformers
     , mtl
     , hostname
-    , hedis
+    , hedis >= 0.10.0
     , text
     , bytestring
     , statistics
@@ -50,6 +50,7 @@ library
     , cereal-text
     , data-default
     , csv-conduit
+    , conduit >= 1.1.2
     , unix
     , errors
     , network
@@ -91,3 +92,5 @@ test-suite test
    , bytestring
    , safecopy
    , quickcheck-instances
+   , stm
+   , async

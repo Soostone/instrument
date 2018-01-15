@@ -1,3 +1,23 @@
+# 0.5.0.0
+Features:
+  - Previously, instrument workers were running the `KEYS` redis
+    command at each loop to discover packets. This has O(N) complexity
+    where N is the entire keyspace of the database and generally isn't
+    safe to use with regularity. In this version, packet keys are also
+    transactionally saved to a set which the worker processes, thus
+    avoiding having to run `KEYS`.
+
+    *Migration*
+    If all of your metric names get written to with any regularity, no
+    action is needed as the next time a metric is written, it will
+    show up in the keys set and be processed as normal. If for some
+    reason you have a significant number of metrics that are
+    infrequently or never written to, those keys may become
+    unreachable and require manual addition to the key
+    set. `Instrument.Client` exports `packetsKey`. You can write a
+    migration script that finds all keys prefixed with `_sq_` and
+    `SADD` them to `packetsKey`.
+
 # 0.4.0.0
 
 Features:

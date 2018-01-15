@@ -1,4 +1,5 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Instrument.Client
     ( Instrument
     , initInstrument
@@ -11,6 +12,7 @@ module Instrument.Client
     , timerMetricName
     , stripTimerPrefix
     , timerMetricNamePrefix
+    , packetsKey
     ) where
 
 -------------------------------------------------------------------------------
@@ -107,11 +109,23 @@ submitCounters cs r cfg = do
 
 -------------------------------------------------------------------------------
 submitPacket :: (SC.SafeCopy a) => R.Connection -> MetricName -> Maybe Integer -> a -> IO ()
-submitPacket r m mbound sp = void $ R.runRedis r push
-    where rk = B.concat [B.pack "_sq_", B.pack (metricName m)]
-          push = case mbound of
-            Just n  -> lpushBounded rk [encodeCompress sp] n
-            Nothing -> void $ R.lpush rk [encodeCompress sp]
+submitPacket r m mbound sp = void $ R.runRedis r $ R.multiExec $ do
+  -- Write key with the stat contents
+  _ <- push
+  -- Remember the key we wrote to so we can retrieve it later without key scanning
+  rememberKey
+  where rk = B.concat [B.pack "_sq_", B.pack (metricName m)]
+        push = case mbound of
+          Just n  -> lpushBoundedTxn rk [encodeCompress sp] n
+          Nothing -> (() <$) <$> R.lpush rk [encodeCompress sp]
+        rememberKey = sadd packetsKey [rk]
+
+
+-------------------------------------------------------------------------------
+-- | A key pointing to a SET of keys with _sq_ prefix, which contain
+-- data packets. These are processed by worker.
+packetsKey :: B.ByteString
+packetsKey = "_sqkeys"
 
 
 -------------------------------------------------------------------------------
@@ -159,7 +173,7 @@ incrementI m hostDimPolicy rawDims i =
   liftIO $ C.increment =<< getCounter m dims i
   where
     dims = case hostDimPolicy of
-      AddHostDimension -> addHostDimension (hostName i) rawDims
+      AddHostDimension      -> addHostDimension (hostName i) rawDims
       DoNotAddHostDimension -> rawDims
 
 
@@ -179,7 +193,7 @@ countI m hostDimPolicy rawDims n i =
   liftIO $ C.add n =<< getCounter m dims i
   where
     dims = case hostDimPolicy of
-      AddHostDimension -> addHostDimension (hostName i) rawDims
+      AddHostDimension      -> addHostDimension (hostName i) rawDims
       DoNotAddHostDimension -> rawDims
 
 
@@ -268,7 +282,7 @@ sampleI name hostDimPolicy rawDims v i =
   liftIO $ S.sample v =<< getSampler name dims i
   where
     dims = case hostDimPolicy of
-      AddHostDimension -> addHostDimension (hostName i) rawDims
+      AddHostDimension      -> addHostDimension (hostName i) rawDims
       DoNotAddHostDimension -> rawDims
 
 
@@ -302,8 +316,8 @@ getRef f name mapRef = do
 
 -- | Bounded version of lpush which truncates *new* data first. This
 -- effectively stops accepting data until the queue shrinks below the
--- bound.
-lpushBounded :: B.ByteString -> [B.ByteString] -> Integer -> Redis ()
-lpushBounded k vs mx = void $ multiExec $ do
+-- bound. Occurs in a transaction for composibility with larger transactions.
+lpushBoundedTxn :: B.ByteString -> [B.ByteString] -> Integer -> RedisTx (Queued ())
+lpushBoundedTxn k vs mx = do
   _ <- lpush k vs
-  ltrim k (-mx) (-1)
+  fmap (() <$) (ltrim k (-mx) (-1))
