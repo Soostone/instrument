@@ -31,7 +31,7 @@ import qualified Data.Conduit.List      as CL
 import           Data.CSV.Conduit
 import           Data.Default
 import qualified Data.Map               as M
-import           Data.Monoid
+import           Data.Semigroup
 import qualified Data.SafeCopy          as SC
 import           Data.Serialize
 import qualified Data.Set               as Set
@@ -254,21 +254,44 @@ expandDims m =
 
 
 -- | A function that does something with the aggregation results. Can
--- implement multiple backends simply using this.
+-- implement multiple backends simply using this. Note that Semigroup and Monoid instances are provided for defaulting and combining agg processes.
 data AggProcess = AggProcess
   { apConfig :: AggProcessConfig
   , apProc   :: Aggregated -> Redis ()
   }
 
 
+instance Semigroup AggProcess where
+  (AggProcess cfg1 prc1) <> (AggProcess cfg2 prc2) =
+    AggProcess (cfg1 <> cfg2) (\agg -> prc1 agg >> prc2 agg)
+
+
+instance Monoid AggProcess where
+  mempty = AggProcess mempty (const (pure ()))
+  mappend = (<>)
+
+
 -------------------------------------------------------------------------------
--- | General configuration for agg processes. Defaulted with 'def' and 'defAggProcessConfig'
+-- | General configuration for agg processes. Defaulted with 'def',
+-- 'defAggProcessConfig', and 'mempty'. Configurations can be combined
+-- with (<>) from Monoid or Semigroup.
 data AggProcessConfig = AggProcessConfig
   { metricQuantiles :: MetricName -> Set.Set Quantile
   -- ^ What quantiles should we calculate for any given metric, if
   -- any? We offer some common patterns for this in 'quantileMap',
   -- 'standardQuantiles', and 'noQuantiles'.
   }
+
+
+instance Semigroup AggProcessConfig where
+  AggProcessConfig f1 <> AggProcessConfig f2 = 
+    let f3 = f1 <> f2
+    in AggProcessConfig f3
+
+
+instance Monoid AggProcessConfig where
+  mempty = AggProcessConfig mempty
+  mappend = (<>)
 
 
 -- | Uses 'standardQuantiles'.
@@ -281,7 +304,7 @@ instance Default AggProcessConfig where
 
 
 -- | Regardless of metric, produce no quantiles.
-noQuantiles :: MetricName -> [Quantile]
+noQuantiles :: MetricName -> Set.Set Quantile
 noQuantiles = const mempty
 
 
