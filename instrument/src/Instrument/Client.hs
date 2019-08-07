@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Instrument.Client
     ( Instrument
@@ -24,10 +25,14 @@ import           Data.IORef             (IORef, atomicModifyIORef, newIORef,
                                          readIORef)
 import           Data.List              (isPrefixOf, stripPrefix)
 import qualified Data.Map               as M
-import           Data.Monoid
+import           Data.Monoid            as Monoid
 import qualified Data.SafeCopy          as SC
 import qualified Data.Text              as T
+#if MIN_VERSION_hedis(0,12,0)
+import           Database.Redis         as R
+#else
 import           Database.Redis         as R hiding (HostName, time)
+#endif
 import           Network.HostName
 -------------------------------------------------------------------------------
 import qualified Instrument.Counter     as C
@@ -220,7 +225,7 @@ timerMetricName :: MetricName -> MetricName
 timerMetricName name@(MetricName nameS) =
   if timerMetricNamePrefix `isPrefixOf` nameS
      then name
-     else MetricName (timerMetricNamePrefix <> nameS)
+     else MetricName (timerMetricNamePrefix Monoid.<> nameS)
 
 
 -------------------------------------------------------------------------------

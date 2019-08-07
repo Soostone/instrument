@@ -7,7 +7,7 @@ module Instrument.Tests.Worker
 
 -------------------------------------------------------------------------------
 import qualified Data.Map                   as M
-import           Data.Monoid
+import           Data.Monoid                as Monoid
 import           Test.Tasty
 import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
@@ -34,7 +34,7 @@ expandDimsTests = testGroup "expandDims"
            (dims `M.isSubmapOf` res)
   , testProperty "always includes an aggregate with no dimensions" $ \(Dims dims) ->
       let res = expandDims dims
-      in M.member mempty res
+      in M.member Monoid.mempty res
   --TODO: more and then a test of the worked example
   , testProperty "no one member exceeds the total number of packets" $ \(Dims dims) ->
       let totalPacketCount = sum (length <$> dims)

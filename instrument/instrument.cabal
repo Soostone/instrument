@@ -50,12 +50,12 @@ library
     , cereal-text
     , data-default
     , csv-conduit
-    , conduit >= 1.1.2
+    , conduit >= 1.2.8
     , unix
     , errors
     , network
-    , zlib          >= 0.6 && < 0.7
-    , retry         >= 0.7 && < 0.8
+    , zlib          >= 0.6
+    , retry         >= 0.7
     , exceptions
     , safecopy
 

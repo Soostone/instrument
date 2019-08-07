@@ -1,15 +1,15 @@
-resolver: lts-9.6
+resolver: lts-14.0
 packages:
   - instrument
   - instrument-cloudwatch
-  - location:
-      git: https://github.com/Soostone/safecopy-hunit.git
-      commit: c573e756a2057034c9b33b0509af15fa54eeb246
-    extra-dep: true
 extra-deps:
-  - path-0.6.1
-  - path-io-1.3.3
-  - hedis-0.10.0
+  - amazonka-1.6.1
+  - amazonka-cloudwatch-1.6.1
+  - amazonka-core-1.6.1
+  - http-client-0.5.14
+  - csv-conduit-0.7.0.0
+  - git: https://github.com/Soostone/safecopy-hunit.git
+    commit: c573e756a2057034c9b33b0509af15fa54eeb246
 flags:
   instrument:
     lib-Werror: true

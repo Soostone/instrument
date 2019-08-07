@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -33,12 +34,16 @@ import           Data.IORef
 import qualified Data.Map              as M
 import           Data.Monoid           as Monoid
 import qualified Data.SafeCopy         as SC
-import           Data.Serialize
+import           Data.Serialize        as Ser
 import           Data.Serialize.Text   ()
 import           Data.String
 import           Data.Text             (Text)
 import qualified Data.Text             as T
-import           Database.Redis        as H hiding (HostName, get)
+#if MIN_VERSION_hedis(0,12,0)
+import           Database.Redis        as R
+#else
+import           Database.Redis        as R hiding (HostName, time)
+#endif
 import           GHC.Generics
 import           Network.HostName
 -------------------------------------------------------------------------------
@@ -117,7 +122,7 @@ data SubmissionPacket = SP {
 
 
 instance Serialize SubmissionPacket where
-  get = (to <$> gGet) <|> (upgradeSP0 <$> get)
+  get = (to <$> gGet) <|> (upgradeSP0 <$> Ser.get)
 
 
 instance SC.Migrate SubmissionPacket where
@@ -217,7 +222,7 @@ upgradeAggregated_v0 a = Aggregated_v1
   }
 
 instance Serialize Aggregated_v1 where
-  get = (to <$> gGet) <|> (upgradeAggregated_v0 <$> get)
+  get = (to <$> gGet) <|> (upgradeAggregated_v0 <$> Ser.get)
 
 
 data Aggregated = Aggregated {
@@ -246,7 +251,7 @@ instance SC.Migrate Aggregated where
 
 
 instance Serialize Aggregated where
-  get = (to <$> gGet) <|> (upgradeAggregated_v1 <$> get)
+  get = (to <$> gGet) <|> (upgradeAggregated_v1 <$> Ser.get)
 
 
 -- | Resulting payload for metrics aggregation

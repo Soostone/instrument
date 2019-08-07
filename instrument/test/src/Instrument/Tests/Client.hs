@@ -13,7 +13,7 @@ import           Control.Monad.IO.Class
 import           Data.Default
 import           Data.List                  (find)
 import qualified Data.Map                   as M
-import           Data.Monoid
+import           Data.Monoid                as Monoid
 import           Database.Redis
 import           System.Timeout
 import           Test.Tasty
@@ -63,7 +63,7 @@ multi_key_test mkConn = do
   conn <- mkConn
   instr <- initInstrument redisCI icfg
   aggsRef <- newTVarIO []
-  sampleI "instrument-test1" DoNotAddHostDimension mempty 1 instr
+  sampleI "instrument-test1" DoNotAddHostDimension Monoid.mempty 1 instr
   sampleI "instrument-test2" DoNotAddHostDimension mempty 2 instr
   sleepFlush
   let collectAggs = work conn 1 (AggProcess defAggProcessConfig (\agg -> liftIO (atomically (modifyTVar' aggsRef (agg:)))))

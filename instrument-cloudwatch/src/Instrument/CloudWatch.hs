@@ -26,7 +26,7 @@ import qualified Data.Foldable                        as FT
 import           Data.List.NonEmpty                   (NonEmpty (..))
 import qualified Data.List.NonEmpty                   as NE
 import qualified Data.Map                             as M
-import           Data.Monoid
+import           Data.Monoid                          as Monoid
 import           Data.Semigroup                       (sconcat)
 import           Data.Text                            (Text)
 import qualified Data.Text                            as T
@@ -141,7 +141,7 @@ toDatum a =
     quantileDatums = uncurry mkQuantileDatum <$> quantiles
     mkQuantileDatum :: Int -> Double -> MetricDatum
     mkQuantileDatum quantile val =
-      mkDatum (baseMetricName <> ".p" <> show quantile) (Left val)
+      mkDatum (baseMetricName Monoid.<> ".p" <> show quantile) (Left val)
     quantiles = case aggPayload a of
       AggStats stats -> M.toList (squantiles stats)
       AggCount _     -> []

@@ -26,20 +26,20 @@ import           Control.Error
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
-import           Data.Conduit           (($$))
+import           Data.Conduit           (runConduit, (.|))
 import qualified Data.Conduit.List      as CL
 import           Data.CSV.Conduit
 import           Data.Default
 import qualified Data.Map               as M
-import           Data.Semigroup
 import qualified Data.SafeCopy          as SC
+import           Data.Semigroup         as Semigroup
 import           Data.Serialize
 import qualified Data.Set               as Set
 import qualified Data.Text              as T
 import qualified Data.Text.IO           as T
 import qualified Data.Vector.Unboxed    as V
 import           Database.Redis         as R hiding (decode)
-import           Network
+import           Network.Socket         as N
 import qualified Statistics.Quantile    as Q
 import           Statistics.Sample
 import           System.IO
@@ -113,9 +113,28 @@ initWorkerGraphite'
     -> AggProcessConfig
     -> IO AggProcess
 initWorkerGraphite' server port cfg = do
-    h <- connectTo server (PortNumber $ fromIntegral port)
-    hSetBuffering h LineBuffering
-    return $ putAggregateGraphite h cfg
+  addr <- resolve server (fromIntegral port)
+  sock <- open addr
+  h <- N.socketToHandle sock ReadWriteMode
+  hSetBuffering h LineBuffering
+  return $ putAggregateGraphite h cfg
+  where
+    portNumberToServiceName :: N.PortNumber -> N.ServiceName
+    portNumberToServiceName = show
+    resolve host portNumber = do
+      let hints = N.defaultHints { N.addrSocketType = N.Stream }
+      addr:_ <- N.getAddrInfo
+        (Just hints)
+        (Just host)
+        (Just (portNumberToServiceName portNumber))
+      return addr
+    open addr = do
+      sock <- N.socket
+        (N.addrFamily addr)
+        (N.addrSocketType addr)
+        (N.addrProtocol addr)
+      N.connect sock (N.addrAddress addr)
+      return sock
 
 
 -------------------------------------------------------------------------------
@@ -154,8 +173,9 @@ work :: R.Connection -> Int -> AggProcess -> IO ()
 work r n f = runRedis r $ do
     dbg "entered work block"
     estimate <- either (const 0) id <$> scard packetsKey
-    CL.unfoldM nextKey estimate $$
-      CL.mapM_ (processSampler n f)
+    runConduit $
+      CL.unfoldM nextKey estimate .|
+        CL.mapM_ (processSampler n f)
   where
     nextKey estRemaining
       | estRemaining > 0 = do
@@ -254,7 +274,7 @@ data AggProcess = AggProcess
   }
 
 
-instance Semigroup AggProcess where
+instance Semigroup.Semigroup AggProcess where
   (AggProcess cfg1 prc1) <> (AggProcess cfg2 prc2) =
     AggProcess (cfg1 <> cfg2) (\agg -> prc1 agg >> prc2 agg)
 
@@ -277,7 +297,7 @@ data AggProcessConfig = AggProcessConfig
 
 
 instance Semigroup AggProcessConfig where
-  AggProcessConfig f1 <> AggProcessConfig f2 = 
+  AggProcessConfig f1 <> AggProcessConfig f2 =
     let f3 = f1 <> f2
     in AggProcessConfig f3
 
