@@ -6,7 +6,9 @@ module Instrument.Client
     , initInstrument
     , sampleI
     , timeI
+    , timeExI
     , TM.time
+    , TM.timeEx
     , submitTime
     , incrementI
     , countI
@@ -18,6 +20,8 @@ module Instrument.Client
 
 -------------------------------------------------------------------------------
 import           Control.Concurrent     (forkIO)
+import           Control.Exception      (throw)
+import           Control.Exception.Safe (MonadCatch)
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
@@ -205,7 +209,7 @@ countI m hostDimPolicy rawDims n i =
 -- | Run a monadic action while measuring its runtime. Push the
 -- measurement into the instrument system.
 --
--- >>> timeI \"fileUploadTime\" instr $ uploadFile file
+-- >>> timeI \"fileUploadTime\" policy dims instr $ uploadFile file
 timeI
   :: (MonadIO m)
   => MetricName
@@ -219,6 +223,31 @@ timeI nm hostDimPolicy rawDims i act = do
   submitTime nm hostDimPolicy rawDims secs i
   return res
 
+-- | Run a monadic action while measuring its runtime. Push the measurement into
+-- the instrument system. rethrows exceptions and sends a different Metric on
+-- failure
+--
+-- >>> timeExI \"fileUploadTimeError\" \"fileUploadTime\" policy dims instr $ uploadFile file
+timeExI
+  :: (MonadIO m, MonadCatch m)
+  => MetricName
+  -- ^ metric name to be used on failure
+  -> MetricName
+  -- ^ metric name to be used on success
+  -> HostDimensionPolicy
+  -> Dimensions
+  -> Instrument
+  -> m a
+  -> m a
+timeExI exNm nm hostDimPolicy rawDims i act = do
+  (!secs, !resE) <- TM.timeEx act
+  case resE of
+    Left e -> do
+      submitTime exNm hostDimPolicy rawDims secs i
+      throw e
+    Right res -> do
+      submitTime nm hostDimPolicy rawDims secs i
+      pure res
 
 -------------------------------------------------------------------------------
 timerMetricName :: MetricName -> MetricName

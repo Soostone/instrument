@@ -57,6 +57,7 @@ library
     , zlib          >= 0.6
     , retry         >= 0.7
     , exceptions
+    , safe-exceptions
     , safecopy
 
 test-suite test
@@ -94,3 +95,4 @@ test-suite test
    , quickcheck-instances
    , stm
    , async
+    , safe-exceptions
