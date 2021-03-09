@@ -71,22 +71,14 @@ time_test mkConn step = do
   instr <- initInstrument redisCI icfg
   aggsRef <- newTVarIO []
 
-  void . tryAny
-    . timeExI
-      "instrument-test-timeex-error"
-      "instrument-test-timeex"
-      DoNotAddHostDimension
-      Monoid.mempty
-      instr
-    $ throwM TimeException
+  let toMetric resE =
+        case resE of
+          Left _ -> ("instrument-test-timeex-error", DoNotAddHostDimension, Monoid.mempty)
+          Right _ -> ("instrument-test-timeex", DoNotAddHostDimension, Monoid.mempty)
 
-  timeExI
-    "instrument-test-timeex-error"
-    "instrument-test-timeex"
-    DoNotAddHostDimension
-    Monoid.mempty
-    instr
-    $ pure ()
+  void . tryAny . timeExI toMetric instr $ throwM TimeException
+
+  timeExI toMetric instr $ pure ()
 
   void . tryAny
     . timeI

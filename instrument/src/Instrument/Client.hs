@@ -21,7 +21,7 @@ module Instrument.Client
 -------------------------------------------------------------------------------
 import           Control.Concurrent     (forkIO)
 import           Control.Exception      (throw)
-import           Control.Exception.Safe (MonadCatch)
+import           Control.Exception.Safe (MonadCatch, SomeException)
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
@@ -230,24 +230,15 @@ timeI nm hostDimPolicy rawDims i act = do
 -- >>> timeExI \"fileUploadTimeError\" \"fileUploadTime\" policy dims instr $ uploadFile file
 timeExI
   :: (MonadIO m, MonadCatch m)
-  => MetricName
-  -- ^ metric name to be used on failure
-  -> MetricName
-  -- ^ metric name to be used on success
-  -> HostDimensionPolicy
-  -> Dimensions
+  => (Either SomeException a -> (MetricName, HostDimensionPolicy, Dimensions))
   -> Instrument
   -> m a
   -> m a
-timeExI exNm nm hostDimPolicy rawDims i act = do
+timeExI toMetric i act = do
   (!secs, !resE) <- TM.timeEx act
-  case resE of
-    Left e -> do
-      submitTime exNm hostDimPolicy rawDims secs i
-      throw e
-    Right res -> do
-      submitTime nm hostDimPolicy rawDims secs i
-      pure res
+  let (nm, hostDimPolicy, rawDims) = toMetric resE
+  submitTime nm hostDimPolicy rawDims secs i
+  either throw pure resE
 
 -------------------------------------------------------------------------------
 timerMetricName :: MetricName -> MetricName
