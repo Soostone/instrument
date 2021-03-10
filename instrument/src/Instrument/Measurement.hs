@@ -14,11 +14,14 @@ module Instrument.Measurement
       getTime
     , time
     , time_
+    , timeEx
     ) where
 
 -------------------------------------------------------------------------------
 import           Control.Monad.IO.Class
 import           Data.Time.Clock.POSIX  (getPOSIXTime)
+import           Control.Exception (SomeException)
+import           Control.Exception.Safe (MonadCatch, tryAny)
 -------------------------------------------------------------------------------
 
 
@@ -30,6 +33,10 @@ time act = do
   end <- liftIO getTime
   let !delta = end - start
   return (delta, result)
+
+-- | Measure how long action took, even if they fail
+timeEx :: (MonadCatch m, MonadIO m) => m a -> m (Double, Either SomeException a)
+timeEx = time . tryAny
 
 -- | Just measure how long action takes, discard its result
 time_ :: MonadIO m => m a -> m Double

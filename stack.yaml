@@ -1,4 +1,4 @@
-resolver: lts-14.0
+resolver: lts-14.27
 packages:
   - instrument
   - instrument-cloudwatch
@@ -6,10 +6,11 @@ extra-deps:
   - amazonka-1.6.1
   - amazonka-cloudwatch-1.6.1
   - amazonka-core-1.6.1
-  - http-client-0.5.14
-  - csv-conduit-0.7.0.0
+  - csv-conduit-0.7.2.0
+  - unliftio-core-0.1.2.0
   - git: https://github.com/Soostone/safecopy-hunit.git
     commit: c573e756a2057034c9b33b0509af15fa54eeb246
+
 flags:
   instrument:
     lib-Werror: true

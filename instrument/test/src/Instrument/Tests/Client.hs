@@ -8,6 +8,7 @@ module Instrument.Tests.Client
 import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
+import           Control.Exception.Safe     (Exception, throwM, tryAny)
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Default
@@ -30,6 +31,7 @@ tests :: TestTree
 tests = testGroup "Instrument.Client"
     [ withRedisCleanup $ testCase "queue bounding works" . queue_bounding_test
     , withRedisCleanup $ testCase "multiple keys eventually get flushed" . multi_key_test
+    , withRedisCleanup $ testCaseSteps "also times exceptions" . time_test
     , timerMetricNameTests
     ]
 
@@ -55,6 +57,74 @@ queue_bounding_test mkConn = do
 -------------------------------------------------------------------------------
 sleepFlush :: IO ()
 sleepFlush = threadDelay 1100000
+
+data TimeException =
+  TimeException
+  deriving (Show)
+
+instance Exception TimeException
+
+-------------------------------------------------------------------------------
+time_test :: IO Connection -> (String -> IO a) -> IO ()
+time_test mkConn step = do
+  conn <- mkConn
+  instr <- initInstrument redisCI icfg
+  aggsRef <- newTVarIO []
+
+  let toMetric resE =
+        case resE of
+          Left _ -> ("instrument-test-timeex-error", DoNotAddHostDimension, Monoid.mempty)
+          Right _ -> ("instrument-test-timeex", DoNotAddHostDimension, Monoid.mempty)
+
+  void . tryAny . timeExI toMetric instr $ throwM TimeException
+
+  timeExI toMetric instr $ pure ()
+
+  void . tryAny
+    . timeI
+      "instrument-test-time-error"
+      DoNotAddHostDimension
+      Monoid.mempty
+      instr
+    $ throwM TimeException
+
+  timeI
+    "instrument-test-time"
+    DoNotAddHostDimension
+    Monoid.mempty
+    instr
+    $ pure ()
+
+  sleepFlush
+
+  let collectAggs = work conn 1 (AggProcess defAggProcessConfig (\agg -> liftIO (atomically (modifyTVar' aggsRef (agg:)))))
+
+  withAsync collectAggs $ \worker -> do
+    maggs <- timeout 2000000 $ atomically $ do
+      aggs <- readTVar aggsRef
+      check (length aggs == 3)
+      return aggs
+    cancel worker
+    case maggs of
+      Nothing -> assertFailure "Waited 2 seconds and never received any aggs!"
+      Just aggs -> do
+        let getCount payload =
+              case payload of
+              (AggStats stats) -> scount stats
+              (AggCount n) -> n
+
+            countMatches name n = do
+              void $ step name
+              case filter ((== MetricName ("time." <> name)). aggName) aggs of
+                  [agg] -> getCount (aggPayload agg) @?= n
+                  _ -> assertFailure (name <> "has multiple aggregations")
+
+        countMatches "instrument-test-timeex" 1
+        countMatches "instrument-test-timeex-error" 1
+        countMatches "instrument-test-time" 1
+
+        void $ step "instrument-test-time-error"
+        length (filter ((== MetricName "time.instrument-test-time-error"). aggName) aggs) @?= 0
 
 
 -------------------------------------------------------------------------------
