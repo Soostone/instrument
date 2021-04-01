@@ -6,6 +6,7 @@ module Instrument.Client
     , initInstrument
     , sampleI
     , timeI
+    , timeI'
     , timeExI
     , TM.time
     , TM.timeEx
@@ -21,7 +22,7 @@ module Instrument.Client
 -------------------------------------------------------------------------------
 import           Control.Concurrent     (forkIO)
 import           Control.Exception      (throw)
-import           Control.Exception.Safe (MonadCatch, SomeException)
+import           Control.Exception.Safe (MonadCatch, SomeException, tryAny)
 import           Control.Monad
 import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8  as B
@@ -218,8 +219,21 @@ timeI
   -> Instrument
   -> m a
   -> m a
-timeI nm hostDimPolicy rawDims i act = do
+timeI nm hostDimPolicy rawDims = do
+  timeI' (const (pure (nm, hostDimPolicy, rawDims)))
+
+-- | like timeI but with maximum flexibility: it uses the result and
+-- can use the monad to determine the metric name, host dimension
+-- policy, and dimensions.
+timeI'
+  :: (MonadIO m)
+  => (a -> m (MetricName, HostDimensionPolicy, Dimensions))
+  -> Instrument
+  -> m a
+  -> m a
+timeI' toMetric i act = do
   (!secs, !res) <- TM.time act
+  (nm, hostDimPolicy, rawDims) <- toMetric res
   submitTime nm hostDimPolicy rawDims secs i
   return res
 
@@ -235,9 +249,7 @@ timeExI
   -> m a
   -> m a
 timeExI toMetric i act = do
-  (!secs, !resE) <- TM.timeEx act
-  let (nm, hostDimPolicy, rawDims) = toMetric resE
-  submitTime nm hostDimPolicy rawDims secs i
+  resE <- timeI' (pure . toMetric) i (tryAny act)
   either throw pure resE
 
 -------------------------------------------------------------------------------
