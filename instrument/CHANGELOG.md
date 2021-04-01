@@ -1,3 +1,12 @@
+# 0.6.0.0
+  - Repeatedly call spop rather than spopn for broader redis version
+    compatibility. We're making this a breaking version change since
+    it might have slightly different performance characteristics.
+  - Loosen dependencies
+  - Add `timeExI` for a timer that can respond to exceptions and
+    `timeI'` which can take the result of the action and emit
+    different metrics or suppress metric emission.
+
 # 0.5.0.0
 Features:
   - Previously, instrument workers were running the `KEYS` redis
