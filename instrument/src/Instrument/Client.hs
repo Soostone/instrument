@@ -220,21 +220,27 @@ timeI
   -> m a
   -> m a
 timeI nm hostDimPolicy rawDims = do
-  timeI' (const (pure (nm, hostDimPolicy, rawDims)))
+  timeI' (const (pure (Just (nm, hostDimPolicy, rawDims))))
 
 -- | like timeI but with maximum flexibility: it uses the result and
 -- can use the monad to determine the metric name, host dimension
--- policy, and dimensions.
+-- policy, and dimensions or even not emit a timing at all. Some use cases include:
+--
+-- * Emit different metrics or suppress metrics on error
+-- * Fetch some dimension info from the environment
 timeI'
   :: (MonadIO m)
-  => (a -> m (MetricName, HostDimensionPolicy, Dimensions))
+  => (a -> m (Maybe (MetricName, HostDimensionPolicy, Dimensions)))
   -> Instrument
   -> m a
   -> m a
 timeI' toMetric i act = do
   (!secs, !res) <- TM.time act
-  (nm, hostDimPolicy, rawDims) <- toMetric res
-  submitTime nm hostDimPolicy rawDims secs i
+  metricMay <- toMetric res
+  case metricMay of
+    Just (nm, hostDimPolicy, rawDims) -> do
+      submitTime nm hostDimPolicy rawDims secs i
+    Nothing -> pure ()
   return res
 
 -- | Run a monadic action while measuring its runtime. Push the measurement into
@@ -249,7 +255,7 @@ timeExI
   -> m a
   -> m a
 timeExI toMetric i act = do
-  resE <- timeI' (pure . toMetric) i (tryAny act)
+  resE <- timeI' (pure . Just . toMetric) i (tryAny act)
   either throw pure resE
 
 -------------------------------------------------------------------------------
