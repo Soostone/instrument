@@ -20,7 +20,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Instrument.CloudWatch
   build-depends:       base >= 4.6 && < 5
-                     , amazonka-cloudwatch >= 1.3.5
+                     , amazonka-cloudwatch >= 1.6.1
                      , instrument >= 0.4.0.0
                      , lens >= 4.7 && < 5
                      , text
@@ -29,11 +29,10 @@ library
                      , stm-chans >= 2.0
                      , stm >= 2.4
                      , transformers
-                     , amazonka >= 1.3.5
+                     , amazonka >= 1.6.1
                      , retry >= 0.7
                      , semigroups >= 0.5
                      , exceptions
-                     , amazonka-core >= 1.3.5
                      , containers
   default-language:    Haskell2010
 

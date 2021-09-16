@@ -1,13 +1,14 @@
-resolver: lts-14.27
+resolver: lts-18.10
 packages:
   - instrument
   - instrument-cloudwatch
 extra-deps:
-  - amazonka-1.6.1
-  - amazonka-cloudwatch-1.6.1
-  - amazonka-core-1.6.1
-  - csv-conduit-0.7.2.0
-  - unliftio-core-0.1.2.0
+  - git: https://github.com/brendanhay/amazonka.git
+    commit: 23495aaf7f08d6666f8e3bc8e72f5041ce7c6801
+    subdirs:
+      - amazonka
+      - amazonka-cloudwatch
+  - csv-conduit-0.7.3.0
   - git: https://github.com/Soostone/safecopy-hunit.git
     commit: c573e756a2057034c9b33b0509af15fa54eeb246
 
