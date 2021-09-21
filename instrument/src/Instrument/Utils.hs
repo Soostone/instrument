@@ -1,59 +1,57 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE OverloadedStrings         #-}
 
 module Instrument.Utils
-    ( formatDecimal
-    , formatInt
-    , showT
-    , showBS
-    , collect
-    , noDots
-    , encodeCompress
-    , decodeCompress
-    , indefinitely
-    , seconds
-    , milliseconds
-    , for
-    ) where
-
-
--------------------------------------------------------------------------------
-import           Codec.Compression.GZip
-import           Control.Applicative    ((<|>))
-import           Control.Concurrent     (threadDelay)
-import           Control.Exception      (SomeException)
-import           Control.Monad
-import           Control.Monad.Catch    (Handler (..))
-import           Control.Retry
-import qualified Data.ByteString.Char8  as B
-import           Data.ByteString.Lazy   (fromStrict, toStrict)
-import qualified Data.Map               as M
-import qualified Data.Map.Strict        as MS
-import qualified Data.SafeCopy          as SC
-import           Data.Serialize
-import           Data.Text              (Text)
-import qualified Data.Text              as T
-import           Numeric
-import           System.IO
--------------------------------------------------------------------------------
-
-
+  ( formatDecimal,
+    formatInt,
+    showT,
+    showBS,
+    collect,
+    noDots,
+    encodeCompress,
+    decodeCompress,
+    indefinitely,
+    seconds,
+    milliseconds,
+    for,
+  )
+where
 
 -------------------------------------------------------------------------------
-collect :: (Ord b)
-        => [a]
-        -> (a -> b)
-        -> (a -> c)
-        -> M.Map b [c]
+import Codec.Compression.GZip
+import Control.Applicative ((<|>))
+import Control.Concurrent (threadDelay)
+import Control.Exception (SomeException)
+import Control.Monad
+import Control.Monad.Catch (Handler (..))
+import Control.Retry
+import qualified Data.ByteString.Char8 as B
+import Data.ByteString.Lazy (fromStrict, toStrict)
+import qualified Data.Map as M
+import qualified Data.Map.Strict as MS
+import qualified Data.SafeCopy as SC
+import Data.Serialize
+import Data.Text (Text)
+import qualified Data.Text as T
+import Numeric
+import System.IO
+
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+collect ::
+  (Ord b) =>
+  [a] ->
+  (a -> b) ->
+  (a -> c) ->
+  M.Map b [c]
 collect as mkKey mkVal = foldr step M.empty as
-    where
-      step x acc = MS.insertWith (++) (mkKey x) ([mkVal x]) acc
-
+  where
+    step x acc = MS.insertWith (++) (mkKey x) ([mkVal x]) acc
 
 -------------------------------------------------------------------------------
 noDots :: Text -> Text
 noDots = T.intercalate "_" . T.splitOn "."
-
 
 -------------------------------------------------------------------------------
 showT :: Show a => a -> Text
@@ -66,38 +64,36 @@ showBS = B.pack . show
 formatInt :: RealFrac a => a -> Text
 formatInt i = showT ((floor i) :: Int)
 
-
 -------------------------------------------------------------------------------
-formatDecimal
-    :: RealFloat a
-    => Int
-    -- ^ Digits after the point
-    -> Bool
-    -- ^ Add thousands sep?
-    -> a
-    -- ^ Number
-    -> Text
+formatDecimal ::
+  RealFloat a =>
+  -- | Digits after the point
+  Int ->
+  -- | Add thousands sep?
+  Bool ->
+  -- | Number
+  a ->
+  Text
 formatDecimal n th i =
-    let res = T.pack . showFFloat (Just n) i $ ""
-    in if th then addThousands res else res
-
-
+  let res = T.pack . showFFloat (Just n) i $ ""
+   in if th then addThousands res else res
 
 -------------------------------------------------------------------------------
 addThousands :: Text -> Text
 addThousands t = T.concat [n', dec]
-    where
-      (n,dec) = T.span (/= '.') t
-      n' = T.reverse . T.intercalate "," . T.chunksOf 3 . T.reverse $ n
-
+  where
+    (n, dec) = T.span (/= '.') t
+    n' = T.reverse . T.intercalate "," . T.chunksOf 3 . T.reverse $ n
 
 -------------------------------------------------------------------------------
+
 -- | Serialize and compress with GZip in that order. This is the only
 -- function we use for serializing to Redis.
 encodeCompress :: SC.SafeCopy a => a -> B.ByteString
 encodeCompress = toStrict . compress . runPutLazy . SC.safePut
 
 -------------------------------------------------------------------------------
+
 -- | Decompress from GZip and deserialize in that order. Tries to
 -- decode SafeCopy first and falls back to Serialize if that fails to
 -- account for old data. Note that encodeCompress only serializes to
@@ -107,8 +103,8 @@ decodeCompress = decodeWithFallback . decompress . fromStrict
   where
     decodeWithFallback lbs = runGetLazy SC.safeGet lbs <|> decodeLazy lbs
 
-
 -------------------------------------------------------------------------------
+
 -- | Run an IO repeatedly with the given delay in microseconds. If
 -- there are exceptions in the inner loop, they are logged to stderr,
 -- prefixed with the given string context and retried at an exponential
@@ -117,7 +113,6 @@ indefinitely :: String -> Int -> IO () -> IO ()
 indefinitely ctx n = forever . delayed . logAndBackoff ctx
   where
     delayed = (>> threadDelay n)
-
 
 -------------------------------------------------------------------------------
 logAndBackoff :: String -> IO () -> IO ()
@@ -130,18 +125,17 @@ logAndBackoff ctx = recovering policy [h] . const
       where
         msg = "Caught exception in " ++ ctx ++ ": " ++ show e ++ ". Retrying..."
 
-
 -------------------------------------------------------------------------------
+
 -- | Convert seconds to microseconds
 seconds :: Int -> Int
 seconds = (* milliseconds 1000)
 
-
 -------------------------------------------------------------------------------
+
 -- | Convert milliseconds to microseconds
 milliseconds :: Int -> Int
 milliseconds = (* 1000)
-
 
 -------------------------------------------------------------------------------
 for :: (Functor f) => f a -> (a -> b) -> f b

@@ -1,6 +1,6 @@
-{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- |
 -- Module      : Instrument.Measurement
@@ -8,25 +8,25 @@
 --               (c) 2012, Ozgun Ataman
 --
 -- License     : BSD-style
-
 module Instrument.Measurement
-    (
-      getTime
-    , time
-    , time_
-    , timeEx
-    ) where
+  ( getTime,
+    time,
+    time_,
+    timeEx,
+  )
+where
 
 -------------------------------------------------------------------------------
-import           Control.Monad.IO.Class
-import           Data.Time.Clock.POSIX  (getPOSIXTime)
-import           Control.Exception (SomeException)
-import           Control.Exception.Safe (MonadCatch, tryAny)
--------------------------------------------------------------------------------
 
+import Control.Exception (SomeException)
+import Control.Exception.Safe (MonadCatch, tryAny)
+import Control.Monad.IO.Class
+import Data.Time.Clock.POSIX (getPOSIXTime)
+
+-------------------------------------------------------------------------------
 
 -- | Measure how long action took, in seconds along with its result
-time :: MonadIO m =>  m a -> m (Double, a)
+time :: MonadIO m => m a -> m (Double, a)
 time act = do
   start <- liftIO getTime
   !result <- act
@@ -40,8 +40,7 @@ timeEx = time . tryAny
 
 -- | Just measure how long action takes, discard its result
 time_ :: MonadIO m => m a -> m Double
-time_  = fmap fst . time
-
+time_ = fmap fst . time
 
 -------------------------------------------------------------------------------
 getTime :: IO Double

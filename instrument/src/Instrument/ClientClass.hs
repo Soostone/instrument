@@ -1,9 +1,12 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------------------------
+
+----------------------------------------------------------------------------
+
 -- |
 -- Module      :  Instrument.ClientClass
 -- Copyright   :  Soostone Inc
@@ -16,26 +19,25 @@
 -- instead exposes a typeclass facilitated interface. Once you define
 -- the typeclass for your application's main monad, you can call all
 -- the mesaurement functions directly.
-----------------------------------------------------------------------------
-
 module Instrument.ClientClass
-    ( I.Instrument
-    , I.initInstrument
-    , HasInstrument (..)
-    , sampleI
-    , timeI
-    , countI
-    , incrementI
-    ) where
+  ( I.Instrument,
+    I.initInstrument,
+    HasInstrument (..),
+    sampleI,
+    timeI,
+    countI,
+    incrementI,
+  )
+where
 
 -------------------------------------------------------------------------------
-import           Control.Monad.IO.Class
-import           Control.Monad.Reader
+import Control.Monad.IO.Class
+import Control.Monad.Reader
 -------------------------------------------------------------------------------
-import qualified Instrument.Client      as I
-import           Instrument.Types
--------------------------------------------------------------------------------
+import qualified Instrument.Client as I
+import Instrument.Types
 
+-------------------------------------------------------------------------------
 
 class HasInstrument m where
   getInstrument :: m I.Instrument
@@ -43,52 +45,50 @@ class HasInstrument m where
 instance (Monad m) => HasInstrument (ReaderT I.Instrument m) where
   getInstrument = ask
 
-
 -- | Run a monadic action while measuring its runtime
-timeI :: (MonadIO m, HasInstrument m)
-     => MetricName
-     -> HostDimensionPolicy
-     -> Dimensions
-     -> m a
-     -> m a
+timeI ::
+  (MonadIO m, HasInstrument m) =>
+  MetricName ->
+  HostDimensionPolicy ->
+  Dimensions ->
+  m a ->
+  m a
 timeI name hostDimPolicy dims act = do
   i <- getInstrument
   I.timeI name hostDimPolicy dims i act
 
-
 -- | Record a measurement sample
-sampleI :: (MonadIO m, HasInstrument m )
-       => MetricName
-       -> HostDimensionPolicy
-       -> Dimensions
-       -> Double
-       -> m ()
+sampleI ::
+  (MonadIO m, HasInstrument m) =>
+  MetricName ->
+  HostDimensionPolicy ->
+  Dimensions ->
+  Double ->
+  m ()
 sampleI name hostDimPolicy dims val =
   I.sampleI name hostDimPolicy dims val =<< getInstrument
 
-
 -------------------------------------------------------------------------------
-incrementI
-  :: ( MonadIO m
-     , HasInstrument m
-     )
-  => MetricName
-  -> HostDimensionPolicy
-  -> Dimensions
-  -> m ()
+incrementI ::
+  ( MonadIO m,
+    HasInstrument m
+  ) =>
+  MetricName ->
+  HostDimensionPolicy ->
+  Dimensions ->
+  m ()
 incrementI m hostDimPolicy dims =
   I.incrementI m hostDimPolicy dims =<< getInstrument
 
-
 -------------------------------------------------------------------------------
-countI
-  :: ( MonadIO m
-     , HasInstrument m
-     )
-  => MetricName
-  -> HostDimensionPolicy
-  -> Dimensions
-  -> Int
-  -> m ()
+countI ::
+  ( MonadIO m,
+    HasInstrument m
+  ) =>
+  MetricName ->
+  HostDimensionPolicy ->
+  Dimensions ->
+  Int ->
+  m ()
 countI m hostDimPolicy dims v =
   I.countI m hostDimPolicy dims v =<< getInstrument
