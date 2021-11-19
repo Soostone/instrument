@@ -3,6 +3,7 @@
 
 module Instrument.CloudWatch
   ( CloudWatchICfg (..),
+    mkDefCloudWatchICfg,
     QueueSize,
     queueSize,
     cloudWatchAggProcess,
@@ -19,7 +20,7 @@ import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBMQueue
-import Control.Exception (IOException)
+import qualified Control.Exception.Safe as EX
 import Control.Lens
 import Control.Monad
 import Control.Monad.Catch
@@ -65,6 +66,19 @@ data CloudWatchICfg = CloudWatchICfg
     -- 'standardQuantiles', you're going to see (and pay for) 11 metrics
     -- per metric you publish.
     cwiAggProcessConfig :: AggProcessConfig
+  }
+
+-- | Constructor for CloudWatchICfg. If or when new fields are added to the
+-- record, they can be defaulted to avoid unnecessary breakage. Defaults to 10,000 queue size annd defAggProcessConfig
+mkDefCloudWatchICfg
+  :: Text -- ^ Metric namespace
+  -> Env
+  -> CloudWatchICfg
+mkDefCloudWatchICfg ns env = CloudWatchICfg
+  { cwiNamespace = ns
+  , cwiQueueSize = QueueSize 10000
+  , cwiEnv = env
+  , cwiAggProcessConfig = defAggProcessConfig
   }
 
 -------------------------------------------------------------------------------
@@ -198,4 +212,4 @@ httpRetryH = const $ Handler $ \(_ :: HttpException) -> return True
 
 -- | 'IOException's should be retried
 networkRetryH :: Monad m => a -> Handler m Bool
-networkRetryH = const $ Handler $ \(_ :: IOException) -> return True
+networkRetryH = const $ Handler $ \(_ :: EX.IOException) -> return True
