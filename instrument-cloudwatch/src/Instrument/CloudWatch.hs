@@ -23,7 +23,6 @@ import Control.Concurrent.STM.TBMQueue
 import qualified Control.Exception.Safe as EX
 import Control.Lens
 import Control.Monad
-import Control.Monad.Catch
 import Control.Monad.IO.Class
 import Control.Retry
 import qualified Data.Foldable as FT
@@ -46,6 +45,8 @@ import qualified Network.AWS.CloudWatch.Lens as CW
 newtype QueueSize = QueueSize Int deriving (Show, Eq, Ord)
 
 -------------------------------------------------------------------------------
+
+-- | Construct a queue size. Accepts value > 0
 queueSize :: Prism' Int QueueSize
 queueSize = prism' f t
   where
@@ -65,21 +66,33 @@ data CloudWatchICfg = CloudWatchICfg
     -- cloudwatch works. So if you use something like
     -- 'standardQuantiles', you're going to see (and pay for) 11 metrics
     -- per metric you publish.
-    cwiAggProcessConfig :: AggProcessConfig
+    cwiAggProcessConfig :: AggProcessConfig,
+    -- | This hook will be executed on any unexpected exceptions so that you can
+    -- log, for example.
+    cwiOnError :: EX.SomeException -> IO (),
+    -- | Delay this long on error in microseconds. This can be used to avoid log
+    -- flooding
+    cwiErrorDelay :: Maybe Int
   }
 
 -- | Constructor for CloudWatchICfg. If or when new fields are added to the
--- record, they can be defaulted to avoid unnecessary breakage. Defaults to 10,000 queue size annd defAggProcessConfig
-mkDefCloudWatchICfg
-  :: Text -- ^ Metric namespace
-  -> Env
-  -> CloudWatchICfg
-mkDefCloudWatchICfg ns env = CloudWatchICfg
-  { cwiNamespace = ns
-  , cwiQueueSize = QueueSize 10000
-  , cwiEnv = env
-  , cwiAggProcessConfig = defAggProcessConfig
-  }
+-- record, they can be defaulted to avoid unnecessary breakage. Defaults to
+-- 10,000 queue size, defAggProcessConfig, no-op on error and no delay on error.
+mkDefCloudWatchICfg ::
+  -- | Metric namespace
+  Text ->
+  -- | AWS Environment
+  Env ->
+  CloudWatchICfg
+mkDefCloudWatchICfg ns env =
+  CloudWatchICfg
+    { cwiNamespace = ns,
+      cwiQueueSize = QueueSize 10000,
+      cwiEnv = env,
+      cwiAggProcessConfig = defAggProcessConfig,
+      cwiOnError = const (pure ()),
+      cwiErrorDelay = Nothing
+    }
 
 -------------------------------------------------------------------------------
 cloudWatchAggProcess ::
@@ -99,6 +112,7 @@ cloudWatchAggProcess cfg@CloudWatchICfg {..} = do
     putMVar endSig ()
 
   let writer agg = liftIO (atomically (void (tryWriteTBMQueue q agg)))
+
   let finalizer = putMVar endSig () >> takeMVar endSig
   return (AggProcess cwiAggProcessConfig writer, finalizer)
 
@@ -113,7 +127,12 @@ startWorker CloudWatchICfg {..} q = go
           let datums = sconcat (toDatum A.<$> rawAggs)
           FT.forM_ (splitNE maxDatums datums) $ \datumPage -> do
             let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
-            void (runResourceT (awsRetry (send cwiEnv pmd)))
+            res <- EX.tryAny (runResourceT (awsRetry (send cwiEnv pmd)))
+            case res of
+              Left e -> do
+                void (EX.tryAny (cwiOnError e))
+                maybe (pure ()) threadDelay cwiErrorDelay
+              Right _ -> pure ()
           go
         Nothing -> return ()
     maxDatums = 20
@@ -197,7 +216,7 @@ slurpTBMQueue q = do
         _ -> return acc
 
 -------------------------------------------------------------------------------
-awsRetry :: (MonadIO m, MonadMask m) => m a -> m a
+awsRetry :: (MonadIO m, EX.MonadMask m) => m a -> m a
 awsRetry = recovering policy [httpRetryH, networkRetryH] . const
   where
     policy = constantDelay 50000 <> limitRetries 5
@@ -205,11 +224,11 @@ awsRetry = recovering policy [httpRetryH, networkRetryH] . const
 -------------------------------------------------------------------------------
 
 -- | Which exceptions should we retry?
-httpRetryH :: Monad m => a -> Handler m Bool
-httpRetryH = const $ Handler $ \(_ :: HttpException) -> return True
+httpRetryH :: Monad m => a -> EX.Handler m Bool
+httpRetryH = const $ EX.Handler $ \(_ :: HttpException) -> return True
 
 -------------------------------------------------------------------------------
 
 -- | 'IOException's should be retried
-networkRetryH :: Monad m => a -> Handler m Bool
-networkRetryH = const $ Handler $ \(_ :: EX.IOException) -> return True
+networkRetryH :: Monad m => a -> EX.Handler m Bool
+networkRetryH = const $ EX.Handler $ \(_ :: EX.IOException) -> return True
