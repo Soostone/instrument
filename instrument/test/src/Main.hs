@@ -7,6 +7,7 @@ import qualified Instrument.Tests.Client
 import qualified Instrument.Tests.Types
 import qualified Instrument.Tests.Utils
 import qualified Instrument.Tests.Worker
+import qualified Instrument.Tests.Counter
 import Test.Tasty
 
 -------------------------------------------------------------------------------
@@ -19,5 +20,6 @@ main =
       [ Instrument.Tests.Utils.tests,
         Instrument.Tests.Client.tests,
         Instrument.Tests.Types.tests,
-        Instrument.Tests.Worker.tests
+        Instrument.Tests.Worker.tests,
+        Instrument.Tests.Counter.tests
       ]
