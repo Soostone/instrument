@@ -22,13 +22,13 @@ tests =
         val <- readCounter c
         assertEqual "should be zero after initialized" 0 val,
 
-      testProperty "registers arbitrary nubmer of hits: increment" $ \(NonNegative (n :: Integer)) -> ioProperty $ do
+      testProperty "registers arbitrary number of hits: increment" $ \(NonNegative (n :: Integer)) -> ioProperty $ do
         c <- newCounter
         forM_ [1..n] (\_ -> increment c)
         val <- readCounter c
         pure $ fromIntegral n === val,
 
-      testProperty "registers arbitrary nubmer of hits: add" $ \(NonNegative (n :: Integer)) -> ioProperty $ do
+      testProperty "registers arbitrary number of hits: add" $ \(NonNegative (n :: Integer)) -> ioProperty $ do
         c <- newCounter
         add (fromIntegral n) c
         val <- readCounter c
@@ -43,7 +43,7 @@ tests =
         val <- readCounter c
         pure $ 0 === val,
 
-      testProperty "registers arbitrary nubmer of hits close to rollover" $ \(NonNegative (n :: Integer)) -> ioProperty $ do
+      testProperty "registers arbitrary number of hits close to rollover" $ \(NonNegative (n :: Integer)) -> ioProperty $ do
         c <- newCounter
         let offset = maxBound - 5
         add offset c
