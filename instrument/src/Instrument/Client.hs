@@ -347,6 +347,9 @@ getSamplers ss = M.toList `fmap` readIORef ss
 -- | Lookup a 'Ref' by name in the given map.  If no 'Ref' exists
 -- under the given name, create a new one, insert it into the map and
 -- return it.
+-- Note mapRef is append only, so we can use double-checked locking
+-- to avoid synchronization on reads. That makes hot-path lock free.
+-- We'll only synchronize the first time metric is inserted.
 getRef :: Ord k => IO b -> k -> IORef (M.Map k b) -> IO b
 getRef f name mapRef = do
   mapRef' <- readIORef mapRef
