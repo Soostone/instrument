@@ -95,7 +95,7 @@ addHostDimension host = M.insert hostDimension (DimensionValue (T.pack host))
 mkCounterSubmission ::
   MetricName ->
   Dimensions ->
-  Int ->
+  Integer ->
   IO SubmissionPacket
 mkCounterSubmission m dims i = do
   ts <- TM.getTime
@@ -347,15 +347,22 @@ getSamplers ss = M.toList `fmap` readIORef ss
 -- | Lookup a 'Ref' by name in the given map.  If no 'Ref' exists
 -- under the given name, create a new one, insert it into the map and
 -- return it.
+-- Note mapRef is append only, so we can use double-checked locking
+-- to avoid synchronization on reads. That makes hot-path lock free.
+-- We'll only synchronize the first time metric is inserted.
 getRef :: Ord k => IO b -> k -> IORef (M.Map k b) -> IO b
 getRef f name mapRef = do
-  empty <- f
-  atomicModifyIORef mapRef $ \m ->
-    case M.lookup name m of
-      Nothing ->
-        let m' = M.insert name empty m
-         in (m', empty)
-      Just ref -> (m, ref)
+  mapRef' <- readIORef mapRef
+  case M.lookup name mapRef' of
+    Just ref -> pure ref
+    Nothing -> do
+      empty <- f
+      atomicModifyIORef mapRef $ \m ->
+        case M.lookup name m of
+          Nothing ->
+            let m' = M.insert name empty m
+             in (m', empty)
+          Just ref -> (m, ref)
 {-# INLINEABLE getRef #-}
 
 -- | Bounded version of lpush which truncates *new* data first. This

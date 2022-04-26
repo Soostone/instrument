@@ -117,7 +117,7 @@ time_test mkConn step = do
         let getCount payload =
               case payload of
                 (AggStats stats) -> scount stats
-                (AggCount n) -> n
+                (AggCount n) -> fromIntegral n
 
             countMatches name n = do
               void $ step name
