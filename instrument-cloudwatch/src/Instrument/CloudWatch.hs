@@ -35,9 +35,9 @@ import qualified Data.Text as T
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Instrument
-import Network.AWS
-import qualified Network.AWS.CloudWatch as CW
-import qualified Network.AWS.CloudWatch.Lens as CW
+import Amazonka
+import qualified Amazonka.CloudWatch as CW
+import qualified Amazonka.CloudWatch.Lens as CW
 
 -------------------------------------------------------------------------------
 
