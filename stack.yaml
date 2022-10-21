@@ -4,10 +4,13 @@ packages:
   - instrument-cloudwatch
 extra-deps:
   - git: https://github.com/brendanhay/amazonka.git
-    commit: 23495aaf7f08d6666f8e3bc8e72f5041ce7c6801
+    commit: 159719df7e509e964dba87071e2c53932a4af1a9
     subdirs:
-      - amazonka
-      - amazonka-cloudwatch
+      - lib/amazonka
+      - lib/amazonka-core
+      - lib/services/amazonka-cloudwatch
+      - lib/services/amazonka-sso
+      - lib/services/amazonka-sts
   - csv-conduit-0.7.3.0
   - git: https://github.com/Soostone/safecopy-hunit.git
     commit: c573e756a2057034c9b33b0509af15fa54eeb246
