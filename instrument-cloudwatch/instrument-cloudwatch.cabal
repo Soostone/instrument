@@ -1,5 +1,5 @@
 name:                instrument-cloudwatch
-version:             0.2.0.0
+version:             0.2.1.0
 synopsis:            Adds a worker for the instrument package that exports to Amazon CloudWatch
 description:         Please see README.md
 homepage:            http://github.com/soostone/instrument-cloudwatch#readme

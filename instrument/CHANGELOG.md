@@ -1,3 +1,6 @@
+# 0.6.1.0
+  - GHC 9 compatibility (thanks to @mwu)
+
 # 0.6.0.0
   - Repeatedly call spop rather than spopn for broader redis version
     compatibility. We're making this a breaking version change since
