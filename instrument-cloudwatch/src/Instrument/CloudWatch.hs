@@ -35,7 +35,8 @@ import qualified Data.Text as T
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Instrument
-import Amazonka
+import Data.Text (Text)
+import qualified Amazonka
 import qualified Amazonka.CloudWatch as CW
 import qualified Amazonka.CloudWatch.Lens as CW
 
@@ -59,7 +60,7 @@ queueSize = prism' f t
 data CloudWatchICfg = CloudWatchICfg
   { cwiNamespace :: Text,
     cwiQueueSize :: QueueSize,
-    cwiEnv :: Env,
+    cwiEnv :: Amazonka.Env,
     -- | Note: you should probably limit the quantiles you publish with
     -- this backend. Every quantile you decide to publish for a metric
     -- has to be published as a *separate* metric because of the way
@@ -82,7 +83,7 @@ mkDefCloudWatchICfg ::
   -- | Metric namespace
   Text ->
   -- | AWS Environment
-  Env ->
+  Amazonka.Env ->
   CloudWatchICfg
 mkDefCloudWatchICfg ns env =
   CloudWatchICfg
@@ -127,7 +128,7 @@ startWorker CloudWatchICfg {..} q = go
           let datums = sconcat (toDatum A.<$> rawAggs)
           FT.forM_ (splitNE maxDatums datums) $ \datumPage -> do
             let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
-            res <- EX.tryAny (runResourceT (awsRetry (send cwiEnv pmd)))
+            res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send cwiEnv pmd)))
             case res of
               Left e -> do
                 void (EX.tryAny (cwiOnError e))
@@ -225,7 +226,7 @@ awsRetry = recovering policy [httpRetryH, networkRetryH] . const
 
 -- | Which exceptions should we retry?
 httpRetryH :: Monad m => a -> EX.Handler m Bool
-httpRetryH = const $ EX.Handler $ \(_ :: HttpException) -> return True
+httpRetryH = const $ EX.Handler $ \(_ :: Amazonka.HttpException) -> return True
 
 -------------------------------------------------------------------------------
 
