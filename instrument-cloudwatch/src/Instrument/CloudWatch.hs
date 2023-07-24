@@ -185,7 +185,7 @@ toDatum a =
     ts = aggTS a ^. timeDouble
     dims = uncurry mkDim <$> take maxDimensions (M.toList (aggDimensions a))
     mkDim (DimensionName dn) (DimensionValue dv) = CW.newDimension dn dv
-    maxDimensions = 10
+    maxDimensions = 30
 
 -------------------------------------------------------------------------------
 timeDouble :: Iso' Double UTCTime
