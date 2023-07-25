@@ -136,7 +136,7 @@ startWorker CloudWatchICfg {..} q = go
               Right _ -> pure ()
           go
         Nothing -> return ()
-    maxDatums = 20
+    maxDatums = 1000
 
 -------------------------------------------------------------------------------
 splitNE :: Int -> NonEmpty a -> NonEmpty (NonEmpty a)
