@@ -1,3 +1,6 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -9,8 +12,12 @@ module Instrument.CloudWatch
     cloudWatchAggProcess,
 
     -- * Exported for testing
+    HasSize (..),
+    MaxSize (..),
+    MaxCount (..),
     slurpTBMQueue,
-    splitNE,
+    splitNEWithSize,
+    toDatum,
   )
 where
 
@@ -19,6 +26,8 @@ where
 import qualified Amazonka
 import qualified Amazonka.CloudWatch as CW
 import qualified Amazonka.CloudWatch.Lens as CW
+import qualified Amazonka.Data.ByteString as AWS
+import qualified Amazonka.Data.Query as AWS
 import Control.Applicative as A
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -29,6 +38,7 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Retry
+import qualified Data.ByteString as BS
 import qualified Data.Foldable as FT
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
@@ -127,7 +137,7 @@ startWorker CloudWatchICfg {..} q = go
       case maggs of
         Just rawAggs -> do
           let datums = sconcat (toDatum A.<$> rawAggs)
-          FT.forM_ (splitNE maxDatums datums) $ \datumPage -> do
+          FT.forM_ (splitNEWithSize maxSize maxDatums datums) $ \datumPage -> do
             let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
             res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send cwiEnv pmd)))
             case res of
@@ -136,21 +146,43 @@ startWorker CloudWatchICfg {..} q = go
                 maybe (pure ()) threadDelay cwiErrorDelay
               Right _ -> pure ()
           go
-        Nothing -> return ()
-    maxDatums = 20
+        Nothing -> do
+          return ()
+    maxDatums = 1000
+    -- on semi-live tests setting this to 800KB brings total payload pretty
+    -- close to the upper limit of 1MB, hence we're going with the safer 700KB limit.
+    maxSize = MaxSize (1024 * 700)
 
 -------------------------------------------------------------------------------
-splitNE :: Int -> NonEmpty a -> NonEmpty (NonEmpty a)
-splitNE n xs
-  | n > 0 = NE.reverse (unsafeNE (unsafeNE <$> go [] (NE.toList xs)))
+newtype MaxSize = MaxSize {unMaxSize :: Int}
+  deriving newtype (Show, Eq, Num, Ord)
+
+newtype MaxCount = MaxCount {unMaxCount :: Int}
+  deriving newtype (Show, Eq, Num, Ord)
+
+class HasSize a where
+  calculateSize :: a -> Int
+
+instance HasSize CW.MetricDatum where
+  calculateSize md = BS.length (AWS.toBS (AWS.toQueryList "member" [md]))
+
+splitNEWithSize :: HasSize a => MaxSize -> MaxCount -> NonEmpty a -> NonEmpty (NonEmpty a)
+splitNEWithSize maxSize maxCount xs
+  | maxSize > MaxSize 0 && maxCount > MaxCount 0 = NE.reverse (unsafeNE (NE.reverse . unsafeNE <$> go maxSize maxCount [] (NE.toList xs)))
   | otherwise = xs :| []
   where
-    go acc [] = acc
-    go acc remaining =
-      let (toAdd, remaining') = splitAt n remaining
-       in go (toAdd : acc) remaining'
     unsafeNE (a : as) = a :| as
     unsafeNE _ = error "Impossible empty list passed to unsafeNE"
+
+    go _ _ acc [] = acc
+    go _ remainingCount [] (xRem : xsRem) =
+      let itemSize = MaxSize (calculateSize xRem)
+       in go (maxSize - itemSize) (remainingCount - MaxCount 1) [[xRem]] xsRem
+    go remainingSize remainingCount (currentChunk : completedChunk) (xRem : xsRem) =
+      let itemSize = MaxSize (calculateSize xRem)
+       in if itemSize <= remainingSize && remainingCount > 0
+            then go (remainingSize - itemSize) (remainingCount - MaxCount 1) ((xRem : currentChunk) : completedChunk) xsRem
+            else go (maxSize - itemSize) (maxCount - MaxCount 1) ([xRem] : (currentChunk : completedChunk)) xsRem
 
 -------------------------------------------------------------------------------
 
