@@ -1,0 +1,62 @@
+{
+    "amazonka": {
+        "branch": "main",
+        "description": "A comprehensive Amazon Web Services SDK for Haskell.",
+        "homepage": "",
+        "owner": "brendanhay",
+        "repo": "amazonka",
+        "rev": "91eb47e8e8af0597b2c496d319fd19c0f7e47bc3",
+        "sha256": "0zrh2p940az4ay791g73lanh615nxw4hqlvn7q0b48mwswprjqr0",
+        "type": "tarball",
+        "url": "https://github.com/brendanhay/amazonka/archive/91eb47e8e8af0597b2c496d319fd19c0f7e47bc3.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "niv": {
+        "branch": "master",
+        "description": "Easy dependency management for Nix projects",
+        "homepage": "https://github.com/nmattia/niv",
+        "owner": "nmattia",
+        "repo": "niv",
+        "rev": "e0ca65c81a2d7a4d82a189f1e23a48d59ad42070",
+        "sha256": "1pq9nh1d8nn3xvbdny8fafzw87mj7gsmp6pxkdl65w2g18rmcmzx",
+        "type": "tarball",
+        "url": "https://github.com/nmattia/niv/archive/e0ca65c81a2d7a4d82a189f1e23a48d59ad42070.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "nixpkgs": {
+        "branch": "release-23.05",
+        "description": "Nix Packages collection",
+        "homepage": null,
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "5d3e4f99aaf6c0bfbb7476912e693adc9141ca2f",
+        "sha256": "19adpf41zf2xs1zrizxhq1xjx2qzan88915fxxc4asv5c3qrgxdh",
+        "type": "tarball",
+        "url": "https://github.com/NixOS/nixpkgs/archive/5d3e4f99aaf6c0bfbb7476912e693adc9141ca2f.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+    "pre-commit-hooks": {
+        "branch": "master",
+        "description": "Seamless integration of https://pre-commit.com git hooks with Nix.",
+        "homepage": "",
+        "owner": "cachix",
+        "repo": "pre-commit-hooks.nix",
+        "rev": "29dbe1efaa91c3a415d8b45d62d48325a4748816",
+        "sha256": "13ql527xlhkv3rmn1w307z5c8rb1jcam7c7jmx8k3mkgwzyr9lhn",
+        "type": "tarball",
+        "url": "https://github.com/cachix/pre-commit-hooks.nix/archive/29dbe1efaa91c3a415d8b45d62d48325a4748816.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    },
+  "safecopy-hunit": {
+        "branch": "master",
+        "description": "Tests compatibility of safecopy values",
+        "homepage": null,
+        "owner": "Soostone",
+        "repo": "safecopy-hunit",
+        "rev": "c573e756a2057034c9b33b0509af15fa54eeb246",
+        "sha256": "1zn711rshzkn47cxbf14d2hv7q5iwcyb9sv8rcanfr6qdlrbh2k4",
+        "type": "tarball",
+        "url": "https://github.com/Soostone/safecopy-hunit/archive/c573e756a2057034c9b33b0509af15fa54eeb246.tar.gz",
+        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
+    }
+}

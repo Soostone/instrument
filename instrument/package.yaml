@@ -1,0 +1,81 @@
+---
+name: instrument
+version: 0.6.1.0
+synopsis: Easy stats/metrics instrumentation for Haskell programs
+license: BSD3
+license-file: LICENSE
+author: Ozgun Ataman
+maintainer: ozgun.ataman@soostone.com
+copyright: Soostone Inc
+category: Data
+build-type: Simple
+default-language: Haskell2010
+
+dependencies:
+  - base >= 4.5 && < 5
+  - array
+  - time
+  - transformers
+  - mtl
+  - hostname
+  - hedis >= 0.10.0
+  - text
+  - bytestring
+  - statistics
+  - vector
+  - containers
+  - cereal
+  - cereal-text
+  - data-default
+  - csv-conduit
+  - conduit >= 1.2.8
+  - unix
+  - errors
+  - network
+  - zlib          >= 0.6
+  - retry         >= 0.7
+  - exceptions
+  - safe-exceptions
+  - safecopy
+  - atomic-primops
+
+ghc-options:
+  - -Wall
+
+library:
+  source-dirs:
+    - src
+  ghc-options:
+    - -Werror
+
+tests:
+  test:
+    main: Main.hs
+    source-dirs:
+      - src
+      - test/src
+    ghc-options:
+      - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+    dependencies:
+      - async
+      - base
+      - bytestring
+      - cereal
+      - containers
+      - data-default
+      - hedis
+      - HUnit
+      - path >= 0.6.0
+      - path-io
+      - QuickCheck
+      - quickcheck-instances
+      - safe-exceptions
+      - safecopy
+      - safecopy-hunit
+      - stm
+      - tasty
+      - tasty-hunit
+      - tasty-quickcheck
+      - transformers

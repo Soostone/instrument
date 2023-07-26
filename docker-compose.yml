@@ -1,0 +1,38 @@
+---
+version: '3.7'
+services:
+  redis:
+    image: redis:6-alpine
+    ports:
+      - target: 6379
+        published: 6380
+        protocol: tcp
+        mode: host
+    command: ['redis-server', '--appendonly', 'yes', '--loglevel debug']
+    volumes:
+      - type: volume
+        source: redis
+        target: /data
+      - '/var/run/docker.sock:/var/run/docker.sock'
+  localstack:
+    image: localstack/localstack:2.1.0
+    ports:
+      - '127.0.0.1:4566:4566' #  LocalStack Gateway
+      - '127.0.0.1:4510-4559:4510-4559' #  External Services Port Range
+    environment:
+      - SERVICES=cloudwatch
+      - DEBUG=${DEBUG-}
+      - PERSISTENCE=${PERSISTENCE-}
+      - LAMBDA_EXECUTOR=${LAMBDA_EXECUTOR-}
+      - LOCALSTACK_API_KEY=${LOCALSTACK_API_KEY-}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - type: volume
+        source: localstack
+        target: /var/lib/localstack
+      - '/var/run/docker.sock:/var/run/docker.sock'
+volumes:
+  redis:
+    name: redis
+  localstack:
+    name: localstack

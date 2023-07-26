@@ -1,0 +1,62 @@
+---
+name: instrument-cloudwatch
+version: 0.2.1.0
+synopsis: >
+  Adds a worker for the instrument package that exports to Amazon CloudWatch
+description: Please see README.md
+homepage: http://github.com/soostone/instrument-cloudwatch#readme
+license: BSD3
+license-file: LICENSE
+author: Michael Xavier
+maintainer: michael.xavier@soostone.com
+copyright: 2015 Soostone Inc
+category: Web
+build-type: Simple
+default-language: Haskell2010
+
+default-extensions: []
+
+dependencies:
+  - base >= 4.6 && < 5
+  - amazonka-cloudwatch >= 2
+  - instrument >= 0.4.0.0
+  - lens >= 4.7 && <= 5.2
+  - text
+  - time >= 1.4.2
+  - async >= 2.0.2
+  - stm-chans >= 2.0
+  - stm >= 2.4
+  - transformers
+  - amazonka >= 1.6.1
+  - retry >= 0.7
+  - semigroups >= 0.5
+  - containers
+  - safe-exceptions
+
+ghc-options:
+  - -Wall
+
+library:
+  source-dirs:
+    - src
+  ghc-options:
+    - -Werror
+
+tests:
+  test:
+    main: Main.hs
+    source-dirs:
+      - src
+      - test
+    ghc-options:
+      - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+    dependencies:
+      - tasty >= 0.10
+      - tasty-hunit >= 0.9
+      - stm
+      - stm-chans
+      - semigroups
+      - tasty-quickcheck >= 0.8.4
+      - QuickCheck
