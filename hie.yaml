@@ -1,11 +1,2 @@
 cradle:
-  stack:
-    - path: "./instrument/src"
-      component: "instrument:lib"
-    - path: "./instrument/test"
-      component: "instrument:test:test"
-
-    - path: "./instrument-cloudwatch/src"
-      component: "instrument-cloudwatch:lib"
-    - path: "./instrument-cloudwatch/test"
-      component: "instrument-cloudwatch:test:test"
+  cabal:

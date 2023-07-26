@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Instrument.Counter
@@ -12,8 +12,10 @@ module Instrument.Counter
 where
 
 -------------------------------------------------------------------------------
-import Data.IORef
+
 import qualified Data.Atomics.Counter as A
+import Data.IORef
+
 -------------------------------------------------------------------------------
 
 data Counter = Counter {_atomicCounter :: A.AtomicCounter, _lastResetValue :: IORef Int}
@@ -37,8 +39,9 @@ readCounter (Counter i lastReset) = calculateDelta <$> readIORef lastReset <*> A
 -- | is lower last value the counter has been reset, rollover happened and we need to
 -- | take it into account. Otherwise, we can simply subtract values.
 calculateDelta :: Int -> Int -> Integer
-calculateDelta lastReset current | current < lastReset =
-  fromIntegral (maxBound @Int - lastReset) + fromIntegral (current - minBound @Int) + 1
+calculateDelta lastReset current
+  | current < lastReset =
+      fromIntegral (maxBound @Int - lastReset) + fromIntegral (current - minBound @Int) + 1
 calculateDelta lastReset current = fromIntegral current - fromIntegral lastReset
 
 -------------------------------------------------------------------------------
@@ -47,7 +50,7 @@ calculateDelta lastReset current = fromIntegral current - fromIntegral lastReset
 resetCounter :: Counter -> IO Integer
 resetCounter (Counter i lastReset) = do
   ctrValue <- A.readCounter i
-  oldLast <- atomicModifyIORef' lastReset $ \oldLast -> (ctrValue, oldLast)
+  oldLast <- atomicModifyIORef' lastReset (ctrValue,)
   pure $ calculateDelta oldLast ctrValue
 
 -------------------------------------------------------------------------------

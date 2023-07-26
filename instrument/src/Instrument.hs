@@ -4,8 +4,6 @@ module Instrument
 
     -- * Data Processing (Backend) Side
     module Instrument.Worker,
-
-    -- *
     module Instrument.Types,
   )
 where

@@ -4,11 +4,12 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: de3b77a2ed26c42708656198a72787a499016424e859a322a9a96fa3bfc52c3c
+-- hash: 45a7868ec4ece5cdab9ce777fe13ccc998ea3e1d4f4fd04278e45dade56d3034
 
 name:           instrument-cloudwatch
 version:        0.2.1.0
 synopsis:       Adds a worker for the instrument package that exports to Amazon CloudWatch
+
 description:    Please see README.md
 category:       Web
 homepage:       http://github.com/soostone/instrument-cloudwatch#readme

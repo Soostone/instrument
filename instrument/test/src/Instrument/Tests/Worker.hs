@@ -39,7 +39,7 @@ expandDimsTests =
       testProperty "always includes an aggregate with no dimensions" $ \(Dims dims) ->
         let res = expandDims dims
          in M.member Monoid.mempty res,
-      --TODO: more and then a test of the worked example
+      -- TODO: more and then a test of the worked example
       testProperty "no one member exceeds the total number of packets" $ \(Dims dims) ->
         let totalPacketCount = sum (length <$> dims)
             res = expandDims dims
@@ -59,7 +59,7 @@ expandDimsTests =
                   (M.fromList [(d1, d1v1)], [p1, p2]),
                   (M.fromList [(d2, d2v1)], [p1]),
                   (M.fromList [(d2, d2v2)], [p2]),
-                  ((M.fromList []), [p1, p2])
+                  (M.empty, [p1, p2])
                 ]
         expandDims m @?= expected
     ]
