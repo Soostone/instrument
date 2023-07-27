@@ -166,23 +166,39 @@ class HasSize a where
 instance HasSize CW.MetricDatum where
   calculateSize md = BS.length (AWS.toBS (AWS.toQueryList "member" [md]))
 
-splitNEWithSize :: HasSize a => MaxSize -> MaxCount -> NonEmpty a -> NonEmpty (NonEmpty a)
-splitNEWithSize maxSize maxCount xs
-  | maxSize > MaxSize 0 && maxCount > MaxCount 0 = NE.reverse (unsafeNE (NE.reverse . unsafeNE <$> go maxSize maxCount [] (NE.toList xs)))
-  | otherwise = xs :| []
-  where
-    unsafeNE (a : as) = a :| as
-    unsafeNE _ = error "Impossible empty list passed to unsafeNE"
+data Buffer a = Buffer
+  { buffer_size :: !Int,
+    buffer_count :: !Int,
+    buffer_items :: !(NonEmpty a)
+  }
 
-    go _ _ acc [] = acc
-    go _ remainingCount [] (xRem : xsRem) =
-      let itemSize = MaxSize (calculateSize xRem)
-       in go (maxSize - itemSize) (remainingCount - MaxCount 1) [[xRem]] xsRem
-    go remainingSize remainingCount (currentChunk : completedChunk) (xRem : xsRem) =
-      let itemSize = MaxSize (calculateSize xRem)
-       in if itemSize <= remainingSize && remainingCount > 0
-            then go (remainingSize - itemSize) (remainingCount - MaxCount 1) ((xRem : currentChunk) : completedChunk) xsRem
-            else go (maxSize - itemSize) (maxCount - MaxCount 1) ([xRem] : (currentChunk : completedChunk)) xsRem
+instance Semigroup (Buffer a) where
+  (Buffer a1 b1 c1) <> (Buffer a2 b2 c2) = Buffer (a1 + a2) (b1 + b2) (c1 <> c2)
+
+singletonBuffer :: HasSize a => a -> Buffer a
+singletonBuffer a =
+  Buffer
+    { buffer_size = calculateSize a,
+      buffer_count = 1,
+      buffer_items = a :| []
+    }
+
+splitNEWithSize :: forall a. HasSize a => MaxSize -> MaxCount -> NonEmpty a -> NonEmpty (NonEmpty a)
+splitNEWithSize (MaxSize maxSize) (MaxCount maxCount) items@(x :| xs) =
+  if maxSize <= 0 || maxCount <= 0
+    then NE.singleton items
+    else NE.reverse (buffer_items <$> foldl go (singletonBuffer x :| []) xs)
+  where
+    tooLarge :: Buffer a -> Bool
+    tooLarge b = buffer_size b > maxSize || buffer_count b > maxCount
+    go :: NonEmpty (Buffer a) -> a -> NonEmpty (Buffer a)
+    go (curBuf :| prevBufs) a =
+      let aBuf = singletonBuffer a
+          newCurBuf = curBuf <> aBuf
+       in if tooLarge newCurBuf
+            then -- prepend completed buffers so that it's O(1)
+              aBuf :| (curBuf : prevBufs)
+            else newCurBuf :| prevBufs
 
 -------------------------------------------------------------------------------
 

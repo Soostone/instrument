@@ -95,8 +95,9 @@ cloudwatch_size_limitation mkConn = do
   let worker = work conn 1 aggProcess
   withAsync worker $ \_ -> do
     threadDelay 10000000
+    -- TODO (koray) pull metrics from CloudWatch and compare
     assertEqual
-      "throws away newer data exceeding bounds"
+      "metric counts match to the ones that were pushed in CloudWatch"
       (1 :: Integer)
       1
 
