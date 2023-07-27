@@ -2,9 +2,11 @@
 *.o
 *.hi
 dist
+dist-newstyle
 cabal-dev
 *DS*
 *.swp
 TAGS
 .stack-work/
 stack.yaml.lock
+/.pre-commit-config.yaml

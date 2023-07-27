@@ -34,6 +34,7 @@ import Data.CSV.Conduit
 import Data.Conduit (runConduit, (.|))
 import qualified Data.Conduit.List as CL
 import Data.Default
+import Data.Either (fromRight)
 import qualified Data.Map as M
 import qualified Data.SafeCopy as SC
 import Data.Semigroup as Semigroup
@@ -88,7 +89,9 @@ initWorkerCSV' fp cfg = do
   !h <- openFile fp AppendMode
   hSetBuffering h LineBuffering
   unless res $
-    T.hPutStrLn h $ rowToStr defCSVSettings . M.keys $ aggToCSV def
+    T.hPutStrLn h $
+      rowToStr defCSVSettings . M.keys $
+        aggToCSV def
   return $ putAggregateCSV h cfg
 
 -------------------------------------------------------------------------------
@@ -183,17 +186,17 @@ mkStats qs s =
 work :: R.Connection -> Int -> AggProcess -> IO ()
 work r n f = runRedis r $ do
   dbg "entered work block"
-  estimate <- either (const 0) id <$> scard packetsKey
+  estimate <- fromRight 0 <$> scard packetsKey
   runConduit $
     CL.unfoldM nextKey estimate
       .| CL.mapM_ (processSampler n f)
   where
     nextKey estRemaining
       | estRemaining > 0 = do
-        mk <- spop packetsKey
-        return $ case mk of
-          Right (Just k) -> Just (k, estRemaining - 1)
-          _ -> Nothing
+          mk <- spop packetsKey
+          return $ case mk of
+            Right (Just k) -> Just (k, estRemaining - 1)
+            _ -> Nothing
       | otherwise = return Nothing
 
 -------------------------------------------------------------------------------
@@ -218,18 +221,20 @@ processSampler n (AggProcess cfg f) k = do
           mkAgg xs =
             case spPayload $ head xs of
               Samples _ ->
-                AggStats . mkStats qs . V.fromList
+                AggStats
+                  . mkStats qs
+                  . V.fromList
                   . concatMap (unSamples . spPayload)
                   $ xs
               Counter _ ->
-                AggCount . sum
+                AggCount
+                  . sum
                   . map (unCounter . spPayload)
                   $ xs
-      t <- (fromIntegral . (* n) . (`div` n) . round) `liftM` liftIO TM.getTime
+      t <- (fromIntegral . (* n) . (`div` n) . round) `fmap` liftIO TM.getTime
       let aggs = map mkDimsAgg $ M.toList $ expandDims $ byDims
           mkDimsAgg (dims, ps) = Aggregated t nm (mkAgg ps) dims
       mapM_ f aggs
-      return ()
   where
     quantilesFn = metricQuantiles cfg
 
@@ -300,7 +305,7 @@ instance Monoid AggProcess where
 -- | General configuration for agg processes. Defaulted with 'def',
 -- 'defAggProcessConfig', and 'mempty'. Configurations can be combined
 -- with (<>) from Monoid or Semigroup.
-data AggProcessConfig = AggProcessConfig
+newtype AggProcessConfig = AggProcessConfig
   { -- | What quantiles should we calculate for any given metric, if
     -- any? We offer some common patterns for this in 'quantileMap',
     -- 'standardQuantiles', and 'noQuantiles'.
@@ -390,7 +395,7 @@ popLAll k = do
   res <- popLMany k 100
   case res of
     [] -> return res
-    _ -> (res ++) `liftM` popLAll k
+    _ -> (res ++) `fmap` popLAll k
 
 -------------------------------------------------------------------------------
 
@@ -424,11 +429,11 @@ aggToCSV agg@Aggregated {..} = els <> defFields <> dimFields
     els :: MapRow T.Text
     els =
       M.fromList $
-        ("metric", T.pack (metricName aggName)) :
-        ("timestamp", ts) :
-        fields
+        ("metric", T.pack (metricName aggName))
+          : ("timestamp", ts)
+          : fields
     (fields, ts) = mkStatsFields agg
-    defFields = M.fromList $ fst $ mkStatsFields $ agg {aggPayload = (AggStats def)}
+    defFields = M.fromList $ fst $ mkStatsFields $ agg {aggPayload = AggStats def}
     dimFields = M.fromList [(k, v) | (DimensionName k, DimensionValue v) <- M.toList aggDimensions]
 
 -------------------------------------------------------------------------------
@@ -450,7 +455,7 @@ mkStatsFields Aggregated {..} = (els, ts)
             ("skewness", formatDecimal 6 False sskewness),
             ("kurtosis", formatDecimal 6 False skurtosis)
           ]
-            ++ (map mkQ $ M.toList squantiles)
+            ++ map mkQ (M.toList squantiles)
         AggCount i ->
           [("count", showT i)]
 

@@ -118,7 +118,7 @@ submitCounters ::
   InstrumentConfig ->
   IO ()
 submitCounters cs r cfg = do
-  ss <- M.toList `liftM` readIORef cs
+  ss <- M.toList `fmap` readIORef cs
   mapM_ (flushCounter r cfg) ss
 
 -------------------------------------------------------------------------------
@@ -371,4 +371,4 @@ getRef f name mapRef = do
 lpushBoundedTxn :: B.ByteString -> [B.ByteString] -> Integer -> RedisTx (Queued ())
 lpushBoundedTxn k vs mx = do
   _ <- lpush k vs
-  fmap (() <$) (ltrim k (- mx) (-1))
+  fmap (() <$) (ltrim k (-mx) (-1))

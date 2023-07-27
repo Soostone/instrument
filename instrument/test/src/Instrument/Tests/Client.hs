@@ -85,7 +85,8 @@ time_test mkConn step = do
 
   timeExI toMetric instr $ pure ()
 
-  void . tryAny
+  void
+    . tryAny
     . timeI
       "instrument-test-time-error"
       DoNotAddHostDimension
@@ -192,7 +193,7 @@ withRedisCleanup = withResource (connect redisCI) cleanup
 
 -------------------------------------------------------------------------------
 redisCI :: ConnectInfo
-redisCI = defaultConnectInfo
+redisCI = defaultConnectInfo {connectPort = PortNumber 6380}
 
 icfg :: InstrumentConfig
 icfg = def {redisQueueBound = Just 2}

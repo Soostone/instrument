@@ -15,6 +15,10 @@ module Instrument.CloudWatch
 where
 
 -------------------------------------------------------------------------------
+
+import qualified Amazonka
+import qualified Amazonka.CloudWatch as CW
+import qualified Amazonka.CloudWatch.Lens as CW
 import Control.Applicative as A
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -31,14 +35,11 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Monoid as Monoid
 import Data.Semigroup (sconcat)
+import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Instrument
-import Data.Text (Text)
-import qualified Amazonka
-import qualified Amazonka.CloudWatch as CW
-import qualified Amazonka.CloudWatch.Lens as CW
 
 -------------------------------------------------------------------------------
 
@@ -181,7 +182,7 @@ toDatum a =
     quantiles = case aggPayload a of
       AggStats stats -> M.toList (squantiles stats)
       AggCount _ -> []
-    baseMetricName = (metricName (aggName a))
+    baseMetricName = metricName (aggName a)
     ts = aggTS a ^. timeDouble
     dims = uncurry mkDim <$> take maxDimensions (M.toList (aggDimensions a))
     mkDim (DimensionName dn) (DimensionValue dv) = CW.newDimension dn dv

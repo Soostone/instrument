@@ -63,9 +63,9 @@ splitNETests =
   testGroup
     "splitNE"
     [ testProperty "0 or negative count" $ \(NonEmpty nel) n ->
-        n <= 0
-          ==> let ne = NE.fromList nel :: NonEmpty ()
-               in splitNE n ne === ne :| [],
+        n <= 0 ==>
+          let ne = NE.fromList nel :: NonEmpty ()
+           in splitNE n ne === ne :| [],
       testProperty "positive count, no items exceed length" $ \(NonEmpty nel) (Positive n) ->
         let ne = NE.fromList nel :: NonEmpty ()
             res = splitNE n ne

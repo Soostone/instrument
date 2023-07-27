@@ -17,7 +17,7 @@ import Test.Tasty.HUnit
 
 -------------------------------------------------------------------------------
 
---TODO: test parse of .serialize files
+-- TODO: test parse of .serialize files
 
 tests :: TestTree
 tests =

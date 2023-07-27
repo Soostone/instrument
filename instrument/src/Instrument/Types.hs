@@ -40,7 +40,7 @@ import Data.Serialize.Text ()
 import Data.String
 import Data.Text (Text)
 import qualified Data.Text as T
-import           Database.Redis        as R
+import Database.Redis as R
 import GHC.Generics
 -------------------------------------------------------------------------------
 import qualified Instrument.Counter as C
@@ -52,11 +52,11 @@ import Network.HostName
 -------------------------------------------------------------------------------
 createInstrumentPool :: ConnectInfo -> IO Connection
 createInstrumentPool ci =
-    connect
-      ci
-        { connectMaxIdleTime = 15,
-          connectMaxConnections = 1
-        }
+  connect
+    ci
+      { connectMaxIdleTime = 15,
+        connectMaxConnections = 1
+      }
 
 -------------------------------------------------------------------------------
 
@@ -125,7 +125,7 @@ data Instrument = I
     redis :: Connection
   }
 
-data InstrumentConfig = ICfg
+newtype InstrumentConfig = ICfg
   { redisQueueBound :: Maybe Integer
   }
 
@@ -178,7 +178,7 @@ data SubmissionPacket = SP
   deriving (Eq, Show, Generic)
 
 instance Serialize SubmissionPacket where
-  get = (to <$> gGet)  <|> (upgradeSP1 <$> Ser.get) <|> (upgradeSP0 <$> Ser.get)
+  get = (to <$> gGet) <|> (upgradeSP1 <$> Ser.get) <|> (upgradeSP0 <$> Ser.get)
 
 upgradeSP0 :: SubmissionPacket_v0 -> SubmissionPacket
 upgradeSP0 SP_v0 {..} =
@@ -244,6 +244,7 @@ instance Serialize Stats
 $(SC.deriveSafeCopy 0 'SC.base ''Stats)
 
 -------------------------------------------------------------------------------
+
 -- | Resulting payload for metrics aggregation
 data AggPayload_v0
   = AggStats_v0 Stats
