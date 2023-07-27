@@ -1,8 +1,10 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Instrument.CloudWatch
   ( CloudWatchICfg (..),
@@ -26,8 +28,11 @@ where
 import qualified Amazonka
 import qualified Amazonka.CloudWatch as CW
 import qualified Amazonka.CloudWatch.Lens as CW
-import qualified Amazonka.Data.ByteString as AWS
-import qualified Amazonka.Data.Query as AWS
+import qualified Amazonka.Data as AWS
+import qualified Amazonka.Request as AWSRequest
+import qualified Amazonka.Response as AWS
+import qualified Amazonka.Types (AWSRequest, Request (..))
+import qualified Codec.Compression.GZip as GZip
 import Control.Applicative as A
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -39,6 +44,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Retry
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Foldable as FT
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
@@ -50,6 +56,7 @@ import qualified Data.Text as T
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Instrument
+import Network.HTTP.Types (hContentEncoding)
 
 -------------------------------------------------------------------------------
 
@@ -138,7 +145,7 @@ startWorker CloudWatchICfg {..} q = go
         Just rawAggs -> do
           let datums = sconcat (toDatum A.<$> rawAggs)
           FT.forM_ (splitNEWithSize maxSize maxDatums datums) $ \datumPage -> do
-            let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
+            let pmd = GzippedPutMetricData (CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage)
             res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send cwiEnv pmd)))
             case res of
               Left e -> do
@@ -282,3 +289,23 @@ httpRetryH = const $ EX.Handler $ \(_ :: Amazonka.HttpException) -> return True
 -- | 'IOException's should be retried
 networkRetryH :: Monad m => a -> EX.Handler m Bool
 networkRetryH = const $ EX.Handler $ \(_ :: EX.IOException) -> return True
+
+-------------------------------------------------------------------------------
+newtype GzippedPutMetricData = GzippedPutMetricData CW.PutMetricData
+  deriving newtype (AWS.ToPath, AWS.ToQuery, AWS.ToHeaders)
+
+instance Amazonka.Types.AWSRequest GzippedPutMetricData where
+  type AWSResponse GzippedPutMetricData = CW.PutMetricDataResponse
+  request overrides x =
+    let req = (AWSRequest.postQuery (overrides CW.defaultService) x :: Amazonka.Types.Request GzippedPutMetricData)
+        !bs = BS.fromStrict (AWS.toBS (AWS.toQuery x))
+        !gzippedBody = GZip.compress bs
+        setContentEncoding = AWS.hdr hContentEncoding "gzip"
+     in if LBS.length bs <= 100000
+          then req {Amazonka.Types.body = AWS.toBody bs}
+          else
+            req
+              { Amazonka.Types.body = AWS.toBody gzippedBody,
+                Amazonka.Types.headers = setContentEncoding (Amazonka.Types.headers req)
+              }
+  response = AWS.receiveNull CW.PutMetricDataResponse'
