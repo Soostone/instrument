@@ -1,3 +1,6 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -9,8 +12,12 @@ module Instrument.CloudWatch
     cloudWatchAggProcess,
 
     -- * Exported for testing
+    HasSize (..),
+    MaxSize (..),
+    MaxCount (..),
     slurpTBMQueue,
-    splitNE,
+    splitNEWithSize,
+    toDatum,
   )
 where
 
@@ -19,6 +26,8 @@ where
 import qualified Amazonka
 import qualified Amazonka.CloudWatch as CW
 import qualified Amazonka.CloudWatch.Lens as CW
+import qualified Amazonka.Data.ByteString as AWS
+import qualified Amazonka.Data.Query as AWS
 import Control.Applicative as A
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -29,6 +38,7 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Retry
+import qualified Data.ByteString as BS
 import qualified Data.Foldable as FT
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
@@ -127,7 +137,7 @@ startWorker CloudWatchICfg {..} q = go
       case maggs of
         Just rawAggs -> do
           let datums = sconcat (toDatum A.<$> rawAggs)
-          FT.forM_ (splitNE maxDatums datums) $ \datumPage -> do
+          FT.forM_ (splitNEWithSize maxSize maxDatums datums) $ \datumPage -> do
             let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
             res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send cwiEnv pmd)))
             case res of
@@ -136,21 +146,59 @@ startWorker CloudWatchICfg {..} q = go
                 maybe (pure ()) threadDelay cwiErrorDelay
               Right _ -> pure ()
           go
-        Nothing -> return ()
-    maxDatums = 20
+        Nothing -> do
+          return ()
+    maxDatums = 1000
+    -- on semi-live tests setting this to 800KB brings total payload pretty
+    -- close to the upper limit of 1MB, hence we're going with the safer 700KB limit.
+    maxSize = MaxSize (1024 * 700)
 
 -------------------------------------------------------------------------------
-splitNE :: Int -> NonEmpty a -> NonEmpty (NonEmpty a)
-splitNE n xs
-  | n > 0 = NE.reverse (unsafeNE (unsafeNE <$> go [] (NE.toList xs)))
-  | otherwise = xs :| []
+newtype MaxSize = MaxSize {unMaxSize :: Int}
+  deriving newtype (Show, Eq, Num, Ord)
+
+newtype MaxCount = MaxCount {unMaxCount :: Int}
+  deriving newtype (Show, Eq, Num, Ord)
+
+class HasSize a where
+  calculateSize :: a -> Int
+
+instance HasSize CW.MetricDatum where
+  calculateSize md = BS.length (AWS.toBS (AWS.toQueryList "member" [md]))
+
+data Buffer a = Buffer
+  { buffer_size :: !Int,
+    buffer_count :: !Int,
+    buffer_items :: !(NonEmpty a)
+  }
+
+instance Semigroup (Buffer a) where
+  (Buffer a1 b1 c1) <> (Buffer a2 b2 c2) = Buffer (a1 + a2) (b1 + b2) (c1 <> c2)
+
+singletonBuffer :: HasSize a => a -> Buffer a
+singletonBuffer a =
+  Buffer
+    { buffer_size = calculateSize a,
+      buffer_count = 1,
+      buffer_items = a :| []
+    }
+
+splitNEWithSize :: forall a. HasSize a => MaxSize -> MaxCount -> NonEmpty a -> NonEmpty (NonEmpty a)
+splitNEWithSize (MaxSize maxSize) (MaxCount maxCount) items@(x :| xs) =
+  if maxSize <= 0 || maxCount <= 0
+    then NE.singleton items
+    else NE.reverse (buffer_items <$> foldl go (singletonBuffer x :| []) xs)
   where
-    go acc [] = acc
-    go acc remaining =
-      let (toAdd, remaining') = splitAt n remaining
-       in go (toAdd : acc) remaining'
-    unsafeNE (a : as) = a :| as
-    unsafeNE _ = error "Impossible empty list passed to unsafeNE"
+    tooLarge :: Buffer a -> Bool
+    tooLarge b = buffer_size b > maxSize || buffer_count b > maxCount
+    go :: NonEmpty (Buffer a) -> a -> NonEmpty (Buffer a)
+    go (curBuf :| prevBufs) a =
+      let aBuf = singletonBuffer a
+          newCurBuf = curBuf <> aBuf
+       in if tooLarge newCurBuf
+            then -- prepend completed buffers so that it's O(1)
+              aBuf :| (curBuf : prevBufs)
+            else newCurBuf :| prevBufs
 
 -------------------------------------------------------------------------------
 
