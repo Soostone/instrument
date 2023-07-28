@@ -294,6 +294,21 @@ networkRetryH = const $ EX.Handler $ \(_ :: EX.IOException) -> return True
 newtype GzippedPutMetricData = GzippedPutMetricData CW.PutMetricData
   deriving newtype (AWS.ToPath, AWS.ToQuery, AWS.ToHeaders)
 
+-- | Amazonka by default sends its request payloads without compression, but in
+-- this specific case per AWS's API reference (
+-- https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricData.html
+-- ) PutMetricData endpoint supports gzipped payloads. This is a significant
+-- improvement on requests that are made in batches.
+--
+-- ideally compression is only useful when the compressed version is very small
+-- compared to the raw data. So we'd probably be fine with a limit of 10KB after
+-- actually starting to compress the request body. But when running Amazonka in
+-- DEBUG logging, it prints out payloads that are smaller than 4KB. Since a
+-- gzipped payload does not always include printable characters, it may break
+-- the application making the request. So, until there is a solution to
+-- https://github.com/brendanhay/amazonka/issues/947 we will use 100KB as the
+-- lower limit to start compressing data. On average that should keep our
+-- compressed payloads above 10KB.
 instance Amazonka.Types.AWSRequest GzippedPutMetricData where
   type AWSResponse GzippedPutMetricData = CW.PutMetricDataResponse
   request overrides x =
