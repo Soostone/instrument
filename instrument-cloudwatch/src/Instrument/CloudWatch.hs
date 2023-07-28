@@ -299,13 +299,11 @@ instance Amazonka.Types.AWSRequest GzippedPutMetricData where
   request overrides x =
     let req = (AWSRequest.postQuery (overrides CW.defaultService) x :: Amazonka.Types.Request GzippedPutMetricData)
         !bs = BS.fromStrict (AWS.toBS (AWS.toQuery x))
-        !gzippedBody = GZip.compress bs
-        setContentEncoding = AWS.hdr hContentEncoding "gzip"
      in if LBS.length bs <= 100000
           then req {Amazonka.Types.body = AWS.toBody bs}
           else
             req
-              { Amazonka.Types.body = AWS.toBody gzippedBody,
-                Amazonka.Types.headers = setContentEncoding (Amazonka.Types.headers req)
+              { Amazonka.Types.body = AWS.toBody (GZip.compress bs),
+                Amazonka.Types.headers = AWS.hdr hContentEncoding "gzip" (Amazonka.Types.headers req)
               }
   response = AWS.receiveNull CW.PutMetricDataResponse'
