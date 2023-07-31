@@ -1,10 +1,10 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Instrument.CloudWatch
   ( CloudWatchICfg (..),
@@ -27,11 +27,10 @@ where
 
 import qualified Amazonka
 import qualified Amazonka.CloudWatch as CW
-import qualified Amazonka.CloudWatch.Lens as CW
+import qualified Amazonka.CloudWatch.Lens as CW --
 import qualified Amazonka.Data as AWS
-import qualified Amazonka.Request as AWSRequest
-import qualified Amazonka.Response as AWS
-import qualified Amazonka.Types (AWSRequest, Request (..))
+import qualified Amazonka.Env.Hooks as AWS
+import Amazonka.Types (Request (..))
 import qualified Codec.Compression.GZip as GZip
 import Control.Applicative as A
 import Control.Concurrent
@@ -46,6 +45,7 @@ import Control.Retry
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Foldable as FT
+import Data.Generics.Labels ()
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
@@ -147,13 +147,14 @@ startWorker :: CloudWatchICfg -> TBMQueue Aggregated -> IO ()
 startWorker CloudWatchICfg {..} q = go
   where
     go = do
+      let awsEnv = cwiEnv & #hooks %~ AWS.configuredRequestHook (AWS.addHookFor @(Request CW.PutMetricData) gzipRequest)
       maggs <- atomically (slurpTBMQueue q)
       case maggs of
         Just rawAggs -> do
           let datums = sconcat (toDatum A.<$> rawAggs)
           FT.forM_ (splitNEWithSize maxSize maxDatums datums) $ \datumPage -> do
-            let pmd = GzippedPutMetricData (CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage)
-            res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send cwiEnv pmd)))
+            let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
+            res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send awsEnv pmd)))
             case res of
               Left e -> do
                 void (EX.tryAny (cwiOnError e))
@@ -298,34 +299,20 @@ networkRetryH :: Monad m => a -> EX.Handler m Bool
 networkRetryH = const $ EX.Handler $ \(_ :: EX.IOException) -> return True
 
 -------------------------------------------------------------------------------
-newtype GzippedPutMetricData = GzippedPutMetricData CW.PutMetricData
-  deriving newtype (AWS.ToPath, AWS.ToQuery, AWS.ToHeaders)
 
 -- | Amazonka by default sends its request payloads without compression, but in
 -- this specific case per AWS's API reference (
 -- https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricData.html
 -- ) PutMetricData endpoint supports gzipped payloads. This is a significant
 -- improvement on requests that are made in batches.
---
--- ideally compression is only useful when the compressed version is very small
--- compared to the raw data. So we'd probably be fine with a limit of 10KB after
--- actually starting to compress the request body. But when running Amazonka in
--- DEBUG logging, it prints out payloads that are smaller than 4KB. Since a
--- gzipped payload does not always include printable characters, it may break
--- the application making the request. So, until there is a solution to
--- https://github.com/brendanhay/amazonka/issues/947 we will use 100KB as the
--- lower limit to start compressing data. On average that should keep our
--- compressed payloads above 10KB.
-instance Amazonka.Types.AWSRequest GzippedPutMetricData where
-  type AWSResponse GzippedPutMetricData = CW.PutMetricDataResponse
-  request overrides x =
-    let req = (AWSRequest.postQuery (overrides CW.defaultService) x :: Amazonka.Types.Request GzippedPutMetricData)
-        !bs = BS.fromStrict (AWS.toBS (AWS.toQuery x))
-     in if LBS.length bs <= (10 * 1024)
-          then req {Amazonka.Types.body = AWS.toBody bs}
-          else
-            req
-              { Amazonka.Types.body = AWS.toBody (GZip.compress bs),
-                Amazonka.Types.headers = AWS.hdr hContentEncoding "gzip" (Amazonka.Types.headers req)
-              }
-  response = AWS.receiveNull CW.PutMetricDataResponse'
+gzipRequest :: AWS.Hook (Request CW.PutMetricData)
+gzipRequest _env req = pure $
+  case req ^. #body of
+    AWS.Hashed (AWS.HashedBytes _ hby) ->
+      req
+        & #headers %~ setHeader
+        & #body .~ compress hby
+    _ -> req
+  where
+    setHeader = AWS.hdr hContentEncoding "gzip"
+    compress = AWS.toBody . GZip.compress . LBS.fromStrict

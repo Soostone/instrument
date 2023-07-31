@@ -5,10 +5,10 @@
         "homepage": "",
         "owner": "korayal",
         "repo": "amazonka",
-        "rev": "9e75ad1f7f1fcee37a09afb3122db5baad62412e",
-        "sha256": "03wwdwpca8hap4dchzclga69gk1i3w0amzpzcs4lg7h8sqymnpxg",
+        "rev": "e6446f54e747aa5b2d77ec8d4bc6a85b722da94a",
+        "sha256": "01w6m1372ndn42zc4x5jacwb9mfppqyrigwkcp1b6ryx2il4xafs",
         "type": "tarball",
-        "url": "https://github.com/korayal/amazonka/archive/9e75ad1f7f1fcee37a09afb3122db5baad62412e.tar.gz",
+        "url": "https://github.com/korayal/amazonka/archive/e6446f54e747aa5b2d77ec8d4bc6a85b722da94a.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "niv": {

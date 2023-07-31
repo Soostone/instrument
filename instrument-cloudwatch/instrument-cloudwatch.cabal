@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: afde6429e815e6ec7a88fc25f72e67571c6f94cc54bdc85a2969ede0ad3f3f5a
+-- hash: cc0ce2ef21ed913533b2ca438d2a9172c743f702e52eab8657d9b252577b52e7
 
 name:           instrument-cloudwatch
 version:        0.2.1.0
@@ -36,6 +36,7 @@ library
     , base >=4.6 && <5
     , bytestring
     , containers
+    , generic-lens
     , http-types
     , instrument >=0.4.0.0
     , lens >=4.7 && <=5.2
@@ -71,6 +72,7 @@ test-suite test
     , bytestring
     , containers
     , data-default
+    , generic-lens
     , hedis
     , http-types
     , instrument >=0.4.0.0
