@@ -49,6 +49,7 @@ import qualified Data.Foldable as FT
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
 import Data.Monoid as Monoid
 import Data.Semigroup (sconcat)
 import Data.Text (Text)
@@ -91,7 +92,11 @@ data CloudWatchICfg = CloudWatchICfg
     cwiOnError :: EX.SomeException -> IO (),
     -- | Delay this long on error in microseconds. This can be used to avoid log
     -- flooding
-    cwiErrorDelay :: Maybe Int
+    cwiErrorDelay :: Maybe Int,
+    -- maximum number of metrics that can be send in each request, defaults to CW's maximum (1000)
+    cwiMaxDatums :: Maybe Int,
+    -- maximum payload size before compression, default is 0.7x CW's maximum payload size (1MB)
+    cwiMaxSize :: Maybe Int
   }
 
 -- | Constructor for CloudWatchICfg. If or when new fields are added to the
@@ -110,7 +115,9 @@ mkDefCloudWatchICfg ns env =
       cwiEnv = env,
       cwiAggProcessConfig = defAggProcessConfig,
       cwiOnError = const (pure ()),
-      cwiErrorDelay = Nothing
+      cwiErrorDelay = Nothing,
+      cwiMaxDatums = Nothing,
+      cwiMaxSize = Nothing
     }
 
 -------------------------------------------------------------------------------
@@ -155,10 +162,10 @@ startWorker CloudWatchICfg {..} q = go
           go
         Nothing -> do
           return ()
-    maxDatums = 1000
+    maxDatums = MaxCount (fromMaybe 1000 cwiMaxDatums)
     -- on semi-live tests setting this to 800KB brings total payload pretty
     -- close to the upper limit of 1MB, hence we're going with the safer 700KB limit.
-    maxSize = MaxSize (1024 * 700)
+    maxSize = MaxSize (fromMaybe (1024 * 700) cwiMaxSize)
 
 -------------------------------------------------------------------------------
 newtype MaxSize = MaxSize {unMaxSize :: Int}
@@ -314,7 +321,7 @@ instance Amazonka.Types.AWSRequest GzippedPutMetricData where
   request overrides x =
     let req = (AWSRequest.postQuery (overrides CW.defaultService) x :: Amazonka.Types.Request GzippedPutMetricData)
         !bs = BS.fromStrict (AWS.toBS (AWS.toQuery x))
-     in if LBS.length bs <= 100000
+     in if LBS.length bs <= (10 * 1024)
           then req {Amazonka.Types.body = AWS.toBody bs}
           else
             req

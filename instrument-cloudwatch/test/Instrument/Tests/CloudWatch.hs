@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -11,21 +12,25 @@ where
 
 -------------------------------------------------------------------------------
 
-import qualified Amazonka as AWS
+import qualified Amazonka
 import qualified Amazonka.CloudWatch as CW
+import qualified Amazonka.CloudWatch.GetMetricStatistics as CW
+import qualified Amazonka.CloudWatch.Types.Datapoint as CW
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TBMQueue
+import Control.Lens
 import Control.Monad
 import Data.Default
 import qualified Data.Foldable as FT
-import Data.Functor
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
+import Data.Maybe (catMaybes)
 import Data.Semigroup
 import qualified Data.Text as T
+import Data.Time.Clock (getCurrentTime)
 import Database.Redis
 -------------------------------------------------------------------------------
 import Instrument
@@ -81,25 +86,57 @@ cloudwatch_size_limitation :: IO Connection -> IO ()
 cloudwatch_size_limitation mkConn = do
   conn <- mkConn
   instr <- initInstrument redisCI icfg
-  forM_ [(1 :: Integer) .. 10000] $ \n ->
-    let newDims = M.insert (DimensionName "test_id") (DimensionValue (T.pack (show n))) dims
-     in sampleI key DoNotAddHostDimension newDims 1 instr
-
-  threadDelay 10000000
-
   awsEnv <- initAWSEnv
 
-  let cfg = mkDefCloudWatchICfg "test-namespace" awsEnv
+  forM_ (take 50 $ cycle [(1 :: Integer) .. 10]) $ \n ->
+    let newDims = M.insert (DimensionName "test_id") (DimensionValue ("test" <> T.pack (show n))) dims
+     in sampleI key DoNotAddHostDimension newDims 1 instr
+
+  threadDelay 1000000
+
+  let cfg =
+        (mkDefCloudWatchICfg cwNamespace awsEnv)
+          { cwiAggProcessConfig = AggProcessConfig noQuantiles,
+            cwiMaxDatums = Just 10
+          }
   (aggProcess, _finalize) <- cloudWatchAggProcess cfg
 
+  startTime <- getCurrentTime
   let worker = work conn 1 aggProcess
   withAsync worker $ \_ -> do
-    threadDelay 10000000
-    -- TODO (koray) pull metrics from CloudWatch and compare
-    assertEqual
-      "metric counts match to the ones that were pushed in CloudWatch"
-      (1 :: Integer)
-      1
+    threadDelay 2000000
+    -- pull metrics from CloudWatch for 'test10' dimension, which should have 5 samples
+    totalSampleCount <- getMetrics awsEnv startTime
+
+    -- for some weird reason, localstack CW returns double the sample count
+    totalSampleCount @?= 10
+  where
+    icfg :: InstrumentConfig
+    icfg = def {redisQueueBound = Nothing}
+
+    cwNamespace = "test-namespace"
+
+    key :: MetricName
+    key = MetricName "instrument-test"
+
+    dims :: Dimensions
+    dims = M.fromList [(DimensionName "server", DimensionValue "app1")]
+
+    dim = CW.newDimension "test_id" "test10"
+
+    getMetrics awsEnv startTime = do
+      now <- getCurrentTime
+      let req =
+            CW.newGetMetricStatistics cwNamespace "instrument-test" startTime now 60
+              & CW.getMetricStatistics_statistics ?~ CW.Statistic_SampleCount :| []
+              & CW.getMetricStatistics_dimensions ?~ [dim]
+
+          getTotalSampleCount res =
+            sum . catMaybes $
+              res ^.. CW.getMetricStatisticsResponse_datapoints . _Just . folded . CW.datapoint_sampleCount
+
+      res <- Amazonka.runResourceT (Amazonka.send awsEnv req)
+      pure (getTotalSampleCount res)
 
 -------------------------------------------------------------------------------
 mkQueue :: Int -> IO (TBMQueue String)
@@ -186,8 +223,14 @@ splitNEWithSizeTests =
 
 -------------------------------------------------------------------------------
 withRedisCleanup :: (IO Connection -> TestTree) -> TestTree
-withRedisCleanup = withResource (connect redisCI) cleanup
+withRedisCleanup = withResource rconnect cleanup
   where
+    rconnect = do
+      conn <- connect redisCI
+      void . runRedis conn $ do
+        ks <- either mempty id <$> smembers packetsKey
+        del (packetsKey : ks)
+      pure conn
     cleanup conn = void $
       runRedis conn $ do
         ks <- either mempty id <$> smembers packetsKey
@@ -198,18 +241,10 @@ withRedisCleanup = withResource (connect redisCI) cleanup
 redisCI :: ConnectInfo
 redisCI = defaultConnectInfo {connectPort = PortNumber 6380}
 
-icfg :: InstrumentConfig
-icfg = def {redisQueueBound = Just 2}
-
-key :: MetricName
-key = MetricName "instrument-test"
-
-dims :: Dimensions
-dims = M.fromList [(DimensionName "server", DimensionValue "app1")]
-
-initAWSEnv :: IO AWS.Env
+initAWSEnv :: IO Amazonka.Env
 initAWSEnv = do
-  logger <- AWS.newLogger AWS.Debug IO.stdout
-  AWS.newEnv AWS.discover <&> \e -> (foldr AWS.configureService e overrides) {AWS.logger = logger}
+  logger <- Amazonka.newLogger Amazonka.Debug IO.stdout
+  env <- Amazonka.newEnv Amazonka.discover <&> \e -> (foldr Amazonka.configureService e overrides) {Amazonka.logger = logger}
+  pure (Amazonka.globalTimeout 300 env)
   where
-    overrides = [AWS.setEndpoint False "localhost" 4566 CW.defaultService]
+    overrides = [Amazonka.setEndpoint False "localhost" 4566 CW.defaultService]

@@ -1,14 +1,14 @@
 {
     "amazonka": {
-        "branch": "main",
+        "branch": "do-not-log-nonprintable-bytestrings",
         "description": "A comprehensive Amazon Web Services SDK for Haskell.",
         "homepage": "",
-        "owner": "brendanhay",
+        "owner": "korayal",
         "repo": "amazonka",
-        "rev": "91eb47e8e8af0597b2c496d319fd19c0f7e47bc3",
-        "sha256": "0zrh2p940az4ay791g73lanh615nxw4hqlvn7q0b48mwswprjqr0",
+        "rev": "9e75ad1f7f1fcee37a09afb3122db5baad62412e",
+        "sha256": "03wwdwpca8hap4dchzclga69gk1i3w0amzpzcs4lg7h8sqymnpxg",
         "type": "tarball",
-        "url": "https://github.com/brendanhay/amazonka/archive/91eb47e8e8af0597b2c496d319fd19c0f7e47bc3.tar.gz",
+        "url": "https://github.com/korayal/amazonka/archive/9e75ad1f7f1fcee37a09afb3122db5baad62412e.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "niv": {
@@ -47,7 +47,7 @@
         "url": "https://github.com/cachix/pre-commit-hooks.nix/archive/29dbe1efaa91c3a415d8b45d62d48325a4748816.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
-  "safecopy-hunit": {
+    "safecopy-hunit": {
         "branch": "master",
         "description": "Tests compatibility of safecopy values",
         "homepage": null,
