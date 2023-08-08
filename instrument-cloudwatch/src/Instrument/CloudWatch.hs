@@ -152,6 +152,11 @@ startWorker CloudWatchICfg {..} q = go
       case maggs of
         Just rawAggs -> do
           let datums = sconcat (toDatum A.<$> rawAggs)
+          -- this will split the raw payload to 700KB chunks, but then the
+          -- resulting payload will be uploaded in a gzipped format, which means
+          -- we're probably never going to exceed 100KB during upload. A more
+          -- optimal version would be one where we can pre-calculate the gzipped
+          -- size and upload 700KB gzipped payloads.
           FT.forM_ (splitNEWithSize maxSize maxDatums datums) $ \datumPage -> do
             let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
             res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send awsEnv pmd)))
