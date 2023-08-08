@@ -1,14 +1,14 @@
 {
     "amazonka": {
-        "branch": "do-not-log-nonprintable-bytestrings",
+        "branch": "main",
         "description": "A comprehensive Amazon Web Services SDK for Haskell.",
-        "homepage": "",
-        "owner": "korayal",
+        "homepage": "https://amazonka.brendanhay.nz",
+        "owner": "brendanhay",
         "repo": "amazonka",
-        "rev": "e6446f54e747aa5b2d77ec8d4bc6a85b722da94a",
-        "sha256": "01w6m1372ndn42zc4x5jacwb9mfppqyrigwkcp1b6ryx2il4xafs",
+        "rev": "5461403cd5412cc0aedd64fe1d27ebf50cef66b3",
+        "sha256": "1877l271z2l819h7jcahjsx5irpnakc263jb5q6wjy4ql4mmwdsg",
         "type": "tarball",
-        "url": "https://github.com/korayal/amazonka/archive/e6446f54e747aa5b2d77ec8d4bc6a85b722da94a.tar.gz",
+        "url": "https://github.com/brendanhay/amazonka/archive/5461403cd5412cc0aedd64fe1d27ebf50cef66b3.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
     "niv": {
