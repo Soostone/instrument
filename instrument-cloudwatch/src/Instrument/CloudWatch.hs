@@ -1,8 +1,10 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Instrument.CloudWatch
   ( CloudWatchICfg (..),
@@ -26,8 +28,10 @@ where
 import qualified Amazonka
 import qualified Amazonka.CloudWatch as CW
 import qualified Amazonka.CloudWatch.Lens as CW
-import qualified Amazonka.Data.ByteString as AWS
-import qualified Amazonka.Data.Query as AWS
+import qualified Amazonka.Data as Amazonka
+import qualified Amazonka.Env.Hooks as Amazonka
+import Amazonka.Types (Request (..))
+import qualified Codec.Compression.GZip as GZip
 import Control.Applicative as A
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -39,10 +43,13 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Retry
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Foldable as FT
+import Data.Generics.Labels ()
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
 import Data.Monoid as Monoid
 import Data.Semigroup (sconcat)
 import Data.Text (Text)
@@ -50,6 +57,7 @@ import qualified Data.Text as T
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Instrument
+import Network.HTTP.Types (hContentEncoding)
 
 -------------------------------------------------------------------------------
 
@@ -84,7 +92,11 @@ data CloudWatchICfg = CloudWatchICfg
     cwiOnError :: EX.SomeException -> IO (),
     -- | Delay this long on error in microseconds. This can be used to avoid log
     -- flooding
-    cwiErrorDelay :: Maybe Int
+    cwiErrorDelay :: Maybe Int,
+    -- maximum number of metrics that can be send in each request, defaults to CW's maximum (1000)
+    cwiMaxDatums :: Maybe Int,
+    -- maximum payload size before compression, default is 0.7x CW's maximum payload size (1MB)
+    cwiMaxSize :: Maybe Int
   }
 
 -- | Constructor for CloudWatchICfg. If or when new fields are added to the
@@ -93,7 +105,7 @@ data CloudWatchICfg = CloudWatchICfg
 mkDefCloudWatchICfg ::
   -- | Metric namespace
   Text ->
-  -- | AWS Environment
+  -- | Amazonka Environment
   Amazonka.Env ->
   CloudWatchICfg
 mkDefCloudWatchICfg ns env =
@@ -103,7 +115,9 @@ mkDefCloudWatchICfg ns env =
       cwiEnv = env,
       cwiAggProcessConfig = defAggProcessConfig,
       cwiOnError = const (pure ()),
-      cwiErrorDelay = Nothing
+      cwiErrorDelay = Nothing,
+      cwiMaxDatums = Nothing,
+      cwiMaxSize = Nothing
     }
 
 -------------------------------------------------------------------------------
@@ -133,13 +147,19 @@ startWorker :: CloudWatchICfg -> TBMQueue Aggregated -> IO ()
 startWorker CloudWatchICfg {..} q = go
   where
     go = do
+      let awsEnv = cwiEnv & #hooks %~ Amazonka.configuredRequestHook (Amazonka.addHookFor @(Request CW.PutMetricData) gzipRequest)
       maggs <- atomically (slurpTBMQueue q)
       case maggs of
         Just rawAggs -> do
           let datums = sconcat (toDatum A.<$> rawAggs)
+          -- this will split the raw payload to 700KB chunks, but then the
+          -- resulting payload will be uploaded in a gzipped format, which means
+          -- we're probably never going to exceed 100KB during upload. A more
+          -- optimal version would be one where we can pre-calculate the gzipped
+          -- size and upload 700KB gzipped payloads.
           FT.forM_ (splitNEWithSize maxSize maxDatums datums) $ \datumPage -> do
             let pmd = CW.newPutMetricData cwiNamespace & CW.putMetricData_metricData .~ FT.toList datumPage
-            res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send cwiEnv pmd)))
+            res <- EX.tryAny (Amazonka.runResourceT (awsRetry (Amazonka.send awsEnv pmd)))
             case res of
               Left e -> do
                 void (EX.tryAny (cwiOnError e))
@@ -148,10 +168,10 @@ startWorker CloudWatchICfg {..} q = go
           go
         Nothing -> do
           return ()
-    maxDatums = 1000
+    maxDatums = MaxCount (fromMaybe 1000 cwiMaxDatums)
     -- on semi-live tests setting this to 800KB brings total payload pretty
     -- close to the upper limit of 1MB, hence we're going with the safer 700KB limit.
-    maxSize = MaxSize (1024 * 700)
+    maxSize = MaxSize (fromMaybe (1024 * 700) cwiMaxSize)
 
 -------------------------------------------------------------------------------
 newtype MaxSize = MaxSize {unMaxSize :: Int}
@@ -164,7 +184,7 @@ class HasSize a where
   calculateSize :: a -> Int
 
 instance HasSize CW.MetricDatum where
-  calculateSize md = BS.length (AWS.toBS (AWS.toQueryList "member" [md]))
+  calculateSize md = BS.length (Amazonka.toBS (Amazonka.toQueryList "member" [md]))
 
 data Buffer a = Buffer
   { buffer_size :: !Int,
@@ -282,3 +302,22 @@ httpRetryH = const $ EX.Handler $ \(_ :: Amazonka.HttpException) -> return True
 -- | 'IOException's should be retried
 networkRetryH :: Monad m => a -> EX.Handler m Bool
 networkRetryH = const $ EX.Handler $ \(_ :: EX.IOException) -> return True
+
+-------------------------------------------------------------------------------
+
+-- | Amazonka by default sends its request payloads without compression, but in
+-- this specific case per Amazonka's API reference (
+-- https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricData.html
+-- ) PutMetricData endpoint supports gzipped payloads. This is a significant
+-- improvement on requests that are made in batches.
+gzipRequest :: Amazonka.Hook (Request CW.PutMetricData)
+gzipRequest _env req = pure $
+  case req ^. #body of
+    Amazonka.Hashed (Amazonka.HashedBytes _ hby) ->
+      req
+        & #headers %~ setHeader
+        & #body .~ compress hby
+    _ -> req
+  where
+    setHeader = Amazonka.hdr hContentEncoding "gzip"
+    compress = Amazonka.toBody . GZip.compress . LBS.fromStrict

@@ -39,6 +39,12 @@ in {
   amazonka-test = dontCheck (hfinal.callCabal2nix "amazonka-test"
     (sources.amazonka + "/lib/amazonka-test") { });
 
+  crypton = hfinal.callHackageDirect {
+    pkg = "crypton";
+    ver = "0.33";
+    sha256 = "sha256-bq1ypwOhYC8OR5XDWDj0u4+gTygxcwnPL+IffUWvlhg=";
+  } { };
+
   safecopy-hunit = dontCheck
     (hfinal.callCabal2nix "safecopy-hunit" sources.safecopy-hunit { });
 
