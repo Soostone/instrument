@@ -19,7 +19,6 @@ where
 
 -------------------------------------------------------------------------------
 import Codec.Compression.GZip
-import Control.Applicative ((<|>))
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException)
 import Control.Monad
@@ -101,7 +100,9 @@ encodeCompress = toStrict . compress . runPutLazy . SC.safePut
 decodeCompress :: (SC.SafeCopy a, Serialize a) => B.ByteString -> Either String a
 decodeCompress = decodeWithFallback . decompress . fromStrict
   where
-    decodeWithFallback lbs = runGetLazy SC.safeGet lbs <|> decodeLazy lbs
+    decodeWithFallback lbs = case runGetLazy SC.safeGet lbs of
+      x@(Right _) -> x
+      Left _ -> decodeLazy lbs
 
 -------------------------------------------------------------------------------
 
