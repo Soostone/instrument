@@ -10,3 +10,4 @@ TAGS
 .stack-work/
 stack.yaml.lock
 /.pre-commit-config.yaml
+.envrc
