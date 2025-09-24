@@ -38,6 +38,8 @@ dependencies:
   - safe-exceptions
   - safecopy
   - atomic-primops
+  # resource-pool-0.4.0.0 seems to have issues with the default strips/max connection settings
+  - resource-pool >= 0.5.0.0
 
 ghc-options:
   - -Wall

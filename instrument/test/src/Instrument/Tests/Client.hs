@@ -15,6 +15,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Data.Default
 import Data.List (find)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as M
 import Data.Monoid as Monoid
 import Database.Redis
@@ -32,8 +33,9 @@ import Test.Tasty.QuickCheck
 
 tests :: TestTree
 tests =
-  testGroup
+  sequentialTestGroup
     "Instrument.Client"
+    AllFinish
     [ withRedisCleanup $ testCase "queue bounding works" . queue_bounding_test,
       withRedisCleanup $ testCase "multiple keys eventually get flushed" . multi_key_test,
       withRedisCleanup $ testCaseSteps "also times exceptions" . time_test,
@@ -188,7 +190,7 @@ withRedisCleanup = withResource (connect redisCI) cleanup
     cleanup conn = void $
       runRedis conn $ do
         ks <- either mempty id <$> smembers packetsKey
-        _ <- del (packetsKey : ks)
+        _ <- del (packetsKey :| ks)
         quit
 
 -------------------------------------------------------------------------------

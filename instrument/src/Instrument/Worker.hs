@@ -212,14 +212,15 @@ processSampler n (AggProcess cfg f) k = do
   packets <- popLAll k
   case packets of
     [] -> return ()
-    _ -> do
-      let nm = spName . head $ packets
+    (packet : _) -> do
+      let nm = spName packet
           -- with and without timer prefix
           qs = quantilesFn (stripTimerPrefix nm) <> quantilesFn (timerMetricName nm)
           byDims :: M.Map Dimensions [SubmissionPacket]
           byDims = collect packets spDimensions id
-          mkAgg xs =
-            case spPayload $ head xs of
+          mkAgg [] = def
+          mkAgg xs@(h : _) =
+            case spPayload h of
               Samples _ ->
                 AggStats
                   . mkStats qs

@@ -1,4 +1,5 @@
-resolver: lts-18.10
+---
+resolver: lts-24.12
 packages:
   - instrument
   - instrument-cloudwatch
@@ -11,13 +12,14 @@ extra-deps:
       - lib/services/amazonka-cloudwatch
       - lib/services/amazonka-sso
       - lib/services/amazonka-sts
-  - csv-conduit-0.7.3.0
+  - resource-pool-0.5.0.0
   - git: https://github.com/Soostone/safecopy-hunit.git
     commit: c573e756a2057034c9b33b0509af15fa54eeb246
+  - vendor/hedis-4b4e69e266b6aef7e3f768e94d5513edc3a6e9e1
 
-flags:
-  instrument:
-    lib-Werror: true
-  instrument-cloudwatch:
-    lib-Werror: true
 extra-package-dbs: []
+
+nix:
+  enable: true
+  packages:
+    - zlib

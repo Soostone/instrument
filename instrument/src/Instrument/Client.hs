@@ -35,6 +35,7 @@ import Data.IORef
     readIORef,
   )
 import Data.List (isPrefixOf, stripPrefix)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as M
 import Data.Monoid as Monoid
 import qualified Data.SafeCopy as SC
@@ -133,9 +134,9 @@ submitPacket r m mbound sp = void $
   where
     rk = B.concat [B.pack "_sq_", B.pack (metricName m)]
     push = case mbound of
-      Just n -> lpushBoundedTxn rk [encodeCompress sp] n
-      Nothing -> (() <$) <$> R.lpush rk [encodeCompress sp]
-    rememberKey = sadd packetsKey [rk]
+      Just n -> lpushBoundedTxn rk (encodeCompress sp :| []) n
+      Nothing -> (() <$) <$> R.lpush rk (encodeCompress sp :| [])
+    rememberKey = sadd packetsKey (rk :| [])
 
 -------------------------------------------------------------------------------
 
@@ -368,7 +369,7 @@ getRef f name mapRef = do
 -- | Bounded version of lpush which truncates *new* data first. This
 -- effectively stops accepting data until the queue shrinks below the
 -- bound. Occurs in a transaction for composibility with larger transactions.
-lpushBoundedTxn :: B.ByteString -> [B.ByteString] -> Integer -> RedisTx (Queued ())
+lpushBoundedTxn :: B.ByteString -> NonEmpty B.ByteString -> Integer -> RedisTx (Queued ())
 lpushBoundedTxn k vs mx = do
   _ <- lpush k vs
   fmap (() <$) (ltrim k (-mx) (-1))
